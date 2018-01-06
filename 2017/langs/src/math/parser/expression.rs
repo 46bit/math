@@ -51,12 +51,85 @@ mod tests {
     use super::*;
     use nom::{self, IResult};
 
-    fn as_name(s: &str) -> Name {
-        Name(s.to_string())
-    }
-
-    fn as_done<O, E>(remaining: &[u8], output: O) -> IResult<&[u8], O, E> {
-        IResult::Done(&remaining[..], output)
+    #[test]
+    fn expression_test() {
+        assert_eq!(
+            expression(b"1"),
+            as_done(b"", Expression(Operand::I64(1), vec![]))
+        );
+        assert_eq!(
+            expression(b"-123"),
+            as_done(b"", Expression(Operand::I64(-123), vec![]))
+        );
+        assert_eq!(
+            expression(b"35 + -12"),
+            as_done(
+                b"",
+                Expression(Operand::I64(35), vec![(Operator::Add, Operand::I64(-12))])
+            )
+        );
+        assert_eq!(
+            expression(b"35 - i;"),
+            as_done(
+                b";",
+                Expression(
+                    Operand::I64(35),
+                    vec![(Operator::Subtract, Operand::VarSubstitution(as_name("i")))]
+                )
+            )
+        );
+        assert_eq!(
+            expression(b"foo * bar;"),
+            as_done(
+                b";",
+                Expression(
+                    Operand::VarSubstitution(as_name("foo")),
+                    vec![
+                        (Operator::Multiply, Operand::VarSubstitution(as_name("bar"))),
+                    ]
+                )
+            )
+        );
+        assert_eq!(
+            expression(b"f(5) + bar * fn(1, 2, -3, f(i, foo / 3, 9) - -3);"),
+            as_done(
+                b";",
+                Expression(
+                    Operand::FnApplication(as_name("f"), vec![Expression(Operand::I64(5), vec![])]),
+                    vec![
+                        (Operator::Add, Operand::VarSubstitution(as_name("bar"))),
+                        (
+                            Operator::Multiply,
+                            Operand::FnApplication(
+                                as_name("fn"),
+                                vec![
+                                    Expression(Operand::I64(1), vec![]),
+                                    Expression(Operand::I64(2), vec![]),
+                                    Expression(Operand::I64(-3), vec![]),
+                                    Expression(
+                                        Operand::FnApplication(
+                                            as_name("f"),
+                                            vec![
+                                                Expression(
+                                                    Operand::VarSubstitution(as_name("i")),
+                                                    vec![],
+                                                ),
+                                                Expression(
+                                                    Operand::VarSubstitution(as_name("foo")),
+                                                    vec![(Operator::Divide, Operand::I64(3))],
+                                                ),
+                                                Expression(Operand::I64(9), vec![]),
+                                            ],
+                                        ),
+                                        vec![(Operator::Subtract, Operand::I64(-3))],
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ]
+                )
+            )
+        );
     }
 
     #[test]
@@ -67,6 +140,61 @@ mod tests {
         assert_eq!(operator(b"/"), as_done(b"", Operator::Divide));
         assert_eq!(operator(b"^"), IResult::Error(nom::ErrorKind::OneOf));
         assert_eq!(operator(b"+ "), as_done(b" ", Operator::Add));
+    }
+
+    #[test]
+    fn operand_test() {
+        assert_eq!(operand(b"1"), as_done(b"", Operand::I64(1)));
+        assert_eq!(operand(b"794"), as_done(b"", Operand::I64(794)));
+        assert_eq!(operand(b"-1"), as_done(b"", Operand::I64(-1)));
+        assert_eq!(operand(b"-390"), as_done(b"", Operand::I64(-390)));
+
+        assert_eq!(
+            operand(b"f)"),
+            as_done(b")", Operand::VarSubstitution(as_name("f")))
+        );
+        assert_eq!(
+            operand(b"foo * 5"),
+            as_done(b"* 5", Operand::VarSubstitution(as_name("foo")))
+        );
+
+        assert_eq!(
+            operand(b"fn(k * 5)"),
+            as_done(
+                b"",
+                Operand::FnApplication(
+                    as_name("fn"),
+                    vec![
+                        Expression(
+                            Operand::VarSubstitution(as_name("k")),
+                            vec![(Operator::Multiply, Operand::I64(5))],
+                        ),
+                    ]
+                )
+            )
+        );
+        assert_eq!(
+            operand(b"j(3 + foo, l + 3 - 2)"),
+            as_done(
+                b"",
+                Operand::FnApplication(
+                    as_name("j"),
+                    vec![
+                        Expression(
+                            Operand::I64(3),
+                            vec![(Operator::Add, Operand::VarSubstitution(as_name("foo")))],
+                        ),
+                        Expression(
+                            Operand::VarSubstitution(as_name("l")),
+                            vec![
+                                (Operator::Add, Operand::I64(3)),
+                                (Operator::Subtract, Operand::I64(2)),
+                            ],
+                        ),
+                    ]
+                )
+            )
+        );
     }
 
     #[test]
@@ -189,5 +317,13 @@ mod tests {
             function_application(b"f +"),
             IResult::Error(nom::ErrorKind::Tag)
         );
+    }
+
+    fn as_name(s: &str) -> Name {
+        Name(s.to_string())
+    }
+
+    fn as_done<O, E>(remaining: &[u8], output: O) -> IResult<&[u8], O, E> {
+        IResult::Done(&remaining[..], output)
     }
 }
