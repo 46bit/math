@@ -45,3 +45,15 @@ named!(function_application<&[u8], (Name, Vec<Expression>)>,
     expressions: call!(expressions) >>
     ws!(tag!(")")) >>
     (name, expressions)));
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nom::IResult;
+
+    #[test]
+    fn operator_test() {
+        assert_eq!(operator(b"+"), IResult::Done(&b""[..], Operator::Add));
+    }
+}
