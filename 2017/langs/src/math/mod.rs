@@ -1,17 +1,17 @@
 pub mod parser;
-pub mod executor;
+pub mod interpreter;
 
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     ParseError(parser::Error),
-    ExecutionError(executor::Error),
+    InterpreterError(interpreter::Error),
 }
 
 pub fn interpret(s: &[u8]) -> Result<HashMap<Name, i64>, Error> {
     let statements = parser::parse(s).map_err(Error::ParseError)?;
-    let results = executor::execute(statements).map_err(Error::ExecutionError)?;
+    let results = interpreter::execute(statements).map_err(Error::InterpreterError)?;
     return Ok(results);
 }
 

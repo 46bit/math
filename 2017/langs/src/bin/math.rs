@@ -52,7 +52,7 @@ fn main() {
     );
     println!("");
 
-    let mut executor = math::executor::Executor::new();
+    let mut executor = math::interpreter::Executor::new();
     let statements = math::parser::statements(
         b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;",
     ).unwrap()
