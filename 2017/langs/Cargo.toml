@@ -1,9 +1,0 @@
-[package]
-name = "advent"
-version = "0.1.0"
-authors = ["Michael Mokrysz <hi@46b.it>"]
-
-[dependencies.nom]
-#git = "https://github.com/Geal/nom.git"
-#features = ["nightly", "verbose-errors"]
-version = "3.2.1"
