@@ -1,4 +1,5 @@
 use super::*;
+use self::shunting_yard::*;
 use math::*;
 use nom::is_digit;
 
@@ -6,11 +7,17 @@ named!(pub expressions<&[u8], Vec<Expression>>,
   separated_list!(ws!(tag!(",")), call!(expression)));
 
 named!(pub expression<&[u8], Expression>,
-  map!(
-    pair!(call!(operand), many0!(pair!(
-      ws!(call!(operator)),
-      call!(operand)))),
-    |t| Expression(t.0, t.1)));
+    do_parse!(
+        first_operand: ws!(call!(operand)) >>
+        shunting_yard: fold_many0!(
+            pair!(ws!(call!(operator)), ws!(call!(operand))),
+            ShuntingYard::new(first_operand),
+            |mut shunting_yard: ShuntingYard, (operator, operand)| {
+                shunting_yard.push(operator, operand);
+                shunting_yard
+            }
+        ) >>
+        (shunting_yard.into_expression())));
 
 named!(operator<&[u8], Operator>,
   map!(one_of!("+-*/"), |o| match o {
@@ -55,26 +62,35 @@ mod tests {
     fn expression_test() {
         assert_eq!(
             expression(b"1"),
-            as_done(b"", Expression(Operand::I64(1), vec![]))
+            as_done(b"", Expression::Operand(Operand::I64(1)))
         );
         assert_eq!(
             expression(b"-123"),
-            as_done(b"", Expression(Operand::I64(-123), vec![]))
+            as_done(b"", Expression::Operand(Operand::I64(-123)))
+        );
+        assert_eq!(
+            expression(b"-123;"),
+            as_done(b";", Expression::Operand(Operand::I64(-123)))
         );
         assert_eq!(
             expression(b"35 + -12"),
             as_done(
                 b"",
-                Expression(Operand::I64(35), vec![(Operator::Add, Operand::I64(-12))])
+                Expression::Operation(
+                    Operator::Add,
+                    box Expression::Operand(Operand::I64(35)),
+                    box Expression::Operand(Operand::I64(-12))
+                )
             )
         );
         assert_eq!(
             expression(b"35 - i;"),
             as_done(
                 b";",
-                Expression(
-                    Operand::I64(35),
-                    vec![(Operator::Subtract, Operand::VarSubstitution(as_name("i")))]
+                Expression::Operation(
+                    Operator::Subtract,
+                    box Expression::Operand(Operand::I64(35)),
+                    box Expression::Operand(Operand::VarSubstitution(as_name("i")))
                 )
             )
         );
@@ -82,11 +98,10 @@ mod tests {
             expression(b"foo * bar;"),
             as_done(
                 b";",
-                Expression(
-                    Operand::VarSubstitution(as_name("foo")),
-                    vec![
-                        (Operator::Multiply, Operand::VarSubstitution(as_name("bar"))),
-                    ]
+                Expression::Operation(
+                    Operator::Multiply,
+                    box Expression::Operand(Operand::VarSubstitution(as_name("foo"))),
+                    box Expression::Operand(Operand::VarSubstitution(as_name("bar"))),
                 )
             )
         );
@@ -94,39 +109,44 @@ mod tests {
             expression(b"f(5) + bar * fn(1, 2, -3, f(i, foo / 3, 9) - -3);"),
             as_done(
                 b";",
-                Expression(
-                    Operand::FnApplication(as_name("f"), vec![Expression(Operand::I64(5), vec![])]),
-                    vec![
-                        (Operator::Add, Operand::VarSubstitution(as_name("bar"))),
-                        (
-                            Operator::Multiply,
-                            Operand::FnApplication(
-                                as_name("fn"),
-                                vec![
-                                    Expression(Operand::I64(1), vec![]),
-                                    Expression(Operand::I64(2), vec![]),
-                                    Expression(Operand::I64(-3), vec![]),
-                                    Expression(
-                                        Operand::FnApplication(
-                                            as_name("f"),
-                                            vec![
-                                                Expression(
-                                                    Operand::VarSubstitution(as_name("i")),
-                                                    vec![],
-                                                ),
-                                                Expression(
-                                                    Operand::VarSubstitution(as_name("foo")),
-                                                    vec![(Operator::Divide, Operand::I64(3))],
-                                                ),
-                                                Expression(Operand::I64(9), vec![]),
-                                            ],
-                                        ),
-                                        vec![(Operator::Subtract, Operand::I64(-3))],
-                                    ),
-                                ],
-                            ),
-                        ),
-                    ]
+                Expression::Operation(
+                    Operator::Add,
+                    box Expression::Operand(Operand::FnApplication(
+                        as_name("f"),
+                        vec![Expression::Operand(Operand::I64(5))]
+                    )),
+                    box Expression::Operation(
+                        Operator::Multiply,
+                        box Expression::Operand(Operand::VarSubstitution(as_name("bar"))),
+                        box Expression::Operand(Operand::FnApplication(
+                            as_name("fn"),
+                            vec![
+                                Expression::Operand(Operand::I64(1)),
+                                Expression::Operand(Operand::I64(2)),
+                                Expression::Operand(Operand::I64(-3)),
+                                Expression::Operation(
+                                    Operator::Subtract,
+                                    box Expression::Operand(Operand::FnApplication(
+                                        as_name("f"),
+                                        vec![
+                                            Expression::Operand(Operand::VarSubstitution(
+                                                as_name("i"),
+                                            )),
+                                            Expression::Operation(
+                                                Operator::Divide,
+                                                box Expression::Operand(Operand::VarSubstitution(
+                                                    as_name("foo"),
+                                                )),
+                                                box Expression::Operand(Operand::I64(3)),
+                                            ),
+                                            Expression::Operand(Operand::I64(9)),
+                                        ],
+                                    )),
+                                    box Expression::Operand(Operand::I64(-3)),
+                                ),
+                            ]
+                        ))
+                    )
                 )
             )
         );
@@ -165,9 +185,10 @@ mod tests {
                 Operand::FnApplication(
                     as_name("fn"),
                     vec![
-                        Expression(
-                            Operand::VarSubstitution(as_name("k")),
-                            vec![(Operator::Multiply, Operand::I64(5))],
+                        Expression::Operation(
+                            Operator::Multiply,
+                            box Expression::Operand(Operand::VarSubstitution(as_name("k"))),
+                            box Expression::Operand(Operand::I64(5)),
                         ),
                     ]
                 )
@@ -180,16 +201,19 @@ mod tests {
                 Operand::FnApplication(
                     as_name("j"),
                     vec![
-                        Expression(
-                            Operand::I64(3),
-                            vec![(Operator::Add, Operand::VarSubstitution(as_name("foo")))],
+                        Expression::Operation(
+                            Operator::Add,
+                            box Expression::Operand(Operand::I64(3)),
+                            box Expression::Operand(Operand::VarSubstitution(as_name("foo"))),
                         ),
-                        Expression(
-                            Operand::VarSubstitution(as_name("l")),
-                            vec![
-                                (Operator::Add, Operand::I64(3)),
-                                (Operator::Subtract, Operand::I64(2)),
-                            ],
+                        Expression::Operation(
+                            Operator::Subtract,
+                            box Expression::Operation(
+                                Operator::Add,
+                                box Expression::Operand(Operand::VarSubstitution(as_name("l"))),
+                                box Expression::Operand(Operand::I64(3)),
+                            ),
+                            box Expression::Operand(Operand::I64(2)),
                         ),
                     ]
                 )
@@ -237,7 +261,7 @@ mod tests {
             function_application(b"f(5)"),
             as_done(
                 b"",
-                (as_name("f"), vec![Expression(Operand::I64(5), vec![])])
+                (as_name("f"), vec![Expression::Operand(Operand::I64(5))])
             )
         );
         assert_eq!(
@@ -247,8 +271,8 @@ mod tests {
                 (
                     as_name("f"),
                     vec![
-                        Expression(Operand::I64(5), vec![]),
-                        Expression(Operand::I64(6), vec![]),
+                        Expression::Operand(Operand::I64(5)),
+                        Expression::Operand(Operand::I64(6)),
                     ]
                 )
             )
@@ -259,7 +283,7 @@ mod tests {
                 b"",
                 (
                     as_name("f"),
-                    vec![Expression(Operand::VarSubstitution(as_name("a")), vec![])]
+                    vec![Expression::Operand(Operand::VarSubstitution(as_name("a")))]
                 )
             )
         );
@@ -270,8 +294,8 @@ mod tests {
                 (
                     as_name("fn"),
                     vec![
-                        Expression(Operand::VarSubstitution(as_name("i")), vec![]),
-                        Expression(Operand::VarSubstitution(as_name("j")), vec![]),
+                        Expression::Operand(Operand::VarSubstitution(as_name("i"))),
+                        Expression::Operand(Operand::VarSubstitution(as_name("j"))),
                     ]
                 )
             )
@@ -283,9 +307,10 @@ mod tests {
                 (
                     as_name("fn"),
                     vec![
-                        Expression(
-                            Operand::VarSubstitution(as_name("k")),
-                            vec![(Operator::Multiply, Operand::I64(5))],
+                        Expression::Operation(
+                            Operator::Multiply,
+                            box Expression::Operand(Operand::VarSubstitution(as_name("k"))),
+                            box Expression::Operand(Operand::I64(5)),
                         ),
                     ]
                 )
@@ -298,16 +323,19 @@ mod tests {
                 (
                     as_name("fn"),
                     vec![
-                        Expression(
-                            Operand::I64(3),
-                            vec![(Operator::Add, Operand::VarSubstitution(as_name("foo")))],
+                        Expression::Operation(
+                            Operator::Add,
+                            box Expression::Operand(Operand::I64(3)),
+                            box Expression::Operand(Operand::VarSubstitution(as_name("foo"))),
                         ),
-                        Expression(
-                            Operand::VarSubstitution(as_name("l")),
-                            vec![
-                                (Operator::Add, Operand::I64(3)),
-                                (Operator::Subtract, Operand::I64(2)),
-                            ],
+                        Expression::Operation(
+                            Operator::Subtract,
+                            box Expression::Operation(
+                                Operator::Add,
+                                box Expression::Operand(Operand::VarSubstitution(as_name("l"))),
+                                box Expression::Operand(Operand::I64(3)),
+                            ),
+                            box Expression::Operand(Operand::I64(2)),
                         ),
                     ]
                 )

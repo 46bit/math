@@ -36,32 +36,32 @@ fn main() {
     //println!("statement {:?}", statement(b"a(b) = b;"));
     //println!("");
 
-    println!(
-        "statements {:?}",
-        math::parser::statements(b"a = 1 - -3 * 6 / 9;\nb = 5 * -3;")
-    );
-    println!(
-        "statements {:?}",
-        math::parser::statements(b"a = 1 + 3 * 6 / 9;\nb = 5 * a(-5 * 3) + 5;")
-    );
-    println!(
-        "statements {:?}",
-        math::parser::statements(
-            b"a = 1 + a * 6 / 9;\nb = 5 * a(5 * -3) + 5;\na(i, j) = 5 * i - j;"
-        )
-    );
-    println!("");
-
-    let mut executor = math::interpreter::Executor::new();
-    let statements = math::parser::statements(
-        b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;",
-    ).unwrap()
-        .1;
-    executor.run(statements);
-    println!("{:?}", executor.variables);
-
-    println!(
-        "{:?}",
-        math::interpret(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;")
-    );
+    //println!(
+    //    "statements {:?}",
+    //    math::parser::statements(b"a = 1 - -3 * 6 / 9;\nb = 5 * -3;")
+    //);
+    //println!(
+    //    "statements {:?}",
+    //    math::parser::statements(b"a = 1 + 3 * 6 / 9;\nb = 5 * a(-5 * 3) + 5;")
+    //);
+    //println!(
+    //    "statements {:?}",
+    //    math::parser::statements(
+    //        b"a = 1 + a * 6 / 9;\nb = 5 * a(5 * -3) + 5;\na(i, j) = 5 * i - j;"
+    //    )
+    //);
+    //println!("");
+    //
+    //let mut executor = math::interpreter::Executor::new();
+    //let statements = math::parser::statements(
+    //    b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;",
+    //).unwrap()
+    //    .1;
+    //executor.run(statements);
+    //println!("{:?}", executor.variables);
+    //
+    //println!(
+    //    "{:?}",
+    //    math::interpret(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;")
+    //);
 }

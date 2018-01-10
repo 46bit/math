@@ -4,9 +4,13 @@ version = "0.1.0"
 authors = ["Michael Mokrysz <hi@46b.it>"]
 
 [dependencies]
-llvm-sys = "50"
+#llvm-sys = "50"
 
 [dependencies.nom]
 #git = "https://github.com/Geal/nom.git"
 version = "3.2.1"
-features = ["nightly", "verbose-errors"]
+#features = ["nightly", "verbose-errors"]
+
+[dev-dependencies]
+quickcheck = "0.2"
+rand = "0.3.20"
