@@ -60,8 +60,8 @@ fn main() {
     //executor.run(statements);
     //println!("{:?}", executor.variables);
     //
-    //println!(
-    //    "{:?}",
-    //    math::interpret(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;")
-    //);
+    println!(
+        "{:?}",
+        math::interpret(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;")
+    );
 }

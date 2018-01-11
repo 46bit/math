@@ -1,8 +1,8 @@
 pub mod parser;
-//pub mod interpreter;
+pub mod interpreter;
 
 use std::fmt;
-//use std::collections::HashMap;
+use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
 #[cfg(test)]
@@ -11,14 +11,14 @@ use quickcheck::{Arbitrary, Gen};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     ParseError(parser::Error),
-    //    InterpreterError(interpreter::Error),
+    InterpreterError(interpreter::Error),
 }
 
-// pub fn interpret(s: &[u8]) -> Result<HashMap<Name, i64>, Error> {
-//     let statements = parser::parse(s).map_err(Error::ParseError)?;
-//     let results = interpreter::execute(statements).map_err(Error::InterpreterError)?;
-//     return Ok(results);
-// }
+pub fn interpret(s: &[u8]) -> Result<HashMap<Name, i64>, Error> {
+    let statements = parser::parse(s).map_err(Error::ParseError)?;
+    let results = interpreter::execute(&statements).map_err(Error::InterpreterError)?;
+    return Ok(results);
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name(String);

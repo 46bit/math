@@ -59,13 +59,17 @@ mod tests {
     }
 
     fn parses_correctly_prop(input: Statements) -> bool {
-        println!("{}", input.clone());
         format!("{}", parse(format!("{}", input).as_bytes()).unwrap()) == format!("{}", input)
     }
 
     #[test]
     fn parses_correctly() {
-        let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), 11));
-        qc.quickcheck(parses_correctly_prop as fn(Statements) -> bool);
+        // QuickCheck's default size creates infeasibly vast statements, and beyond some
+        // point they stop exploring novel code paths. This does a much better job of
+        // exploring potential edgecases.
+        for size in 1..11 {
+            let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
+            qc.quickcheck(parses_correctly_prop as fn(Statements) -> bool);
+        }
     }
 }
