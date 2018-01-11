@@ -177,7 +177,28 @@ impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Expression::Operand(ref v) => write!(f, "{}", v),
-            Expression::Operation(ref o, ref v0, ref v1) => write!(f, "{} {} {}", v0, o, v1),
+            Expression::Operation(ref operator, ref expr1, ref expr2) => {
+                if let &box Expression::Operation(ref inner_operator, _, _) = expr1 {
+                    if inner_operator < operator {
+                        write!(f, "({})", expr1)?;
+                    } else {
+                        write!(f, "{}", expr1)?;
+                    }
+                } else {
+                    write!(f, "{}", expr1)?;
+                }
+                write!(f, " {} ", operator)?;
+                if let &box Expression::Operation(ref inner_operator, _, _) = expr2 {
+                    if inner_operator < operator {
+                        write!(f, "({})", expr2)?;
+                    } else {
+                        write!(f, "{}", expr2)?;
+                    }
+                } else {
+                    write!(f, "{}", expr2)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -207,12 +228,12 @@ fn arbitrary_expression<G: Gen>(
             let mut exp0 = arbitrary_expression(g, level + 1, vars, fns);
             let mut exp1 = arbitrary_expression(g, level + 1, vars, fns);
             if let Expression::Operation(inner_operator, _, _) = exp0.clone() {
-                if inner_operator <= operator {
+                if inner_operator < operator {
                     exp0 = Expression::Operand(Operand::Group(box exp0));
                 }
             }
             if let Expression::Operation(inner_operator, _, _) = exp1.clone() {
-                if inner_operator <= operator {
+                if inner_operator < operator {
                     exp1 = Expression::Operand(Operand::Group(box exp1));
                 }
             }
