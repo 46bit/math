@@ -21,7 +21,13 @@ pub fn interpret(s: &[u8]) -> Result<HashMap<Name, i64>, Error> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Name(String);
+pub struct Name(pub String);
+
+impl Name {
+    pub fn new(s: &str) -> Name {
+        Name(s.to_string())
+    }
+}
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -50,7 +56,7 @@ fn arbitrary_name<G: Gen>(g: &mut G, level: usize) -> Name {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Statements(Vec<Statement>);
+pub struct Statements(pub Vec<Statement>);
 
 impl fmt::Display for Statements {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

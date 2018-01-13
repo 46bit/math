@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["Michael Mokrysz <hi@46b.it>"]
 
 [dependencies]
-#llvm-sys = "50"
+# PATH="/usr/local/Cellar/llvm/5.0.1/bin:$PATH"
+llvm-sys = "50"
 
 [dependencies.nom]
 #git = "https://github.com/Geal/nom.git"
