@@ -1,5 +1,6 @@
 pub mod parser;
 pub mod interpreter;
+pub mod compiler;
 
 use std::fmt;
 use std::collections::HashMap;
@@ -12,11 +13,18 @@ use quickcheck::{Arbitrary, Gen};
 pub enum Error {
     ParseError(parser::Error),
     InterpreterError(interpreter::Error),
+    CompilerError(compiler::Error),
 }
 
 pub fn interpret(s: &[u8]) -> Result<HashMap<Name, i64>, Error> {
     let statements = parser::parse(s).map_err(Error::ParseError)?;
     let results = interpreter::execute(&statements).map_err(Error::InterpreterError)?;
+    return Ok(results);
+}
+
+pub fn compile(s: &[u8]) -> Result<String, Error> {
+    let statements = parser::parse(s).map_err(Error::ParseError)?;
+    let results = unsafe { compiler::compile(&statements).map_err(Error::CompilerError)? };
     return Ok(results);
 }
 

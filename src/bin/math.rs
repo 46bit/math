@@ -61,8 +61,8 @@ fn main() {
     //println!("{:?}", executor.variables);
     //
     println!(
-        "{:?}",
-        math::interpret(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;")
+        "{}",
+        math::compile(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;").unwrap()
     );
 
     println!("{}", math::parser::parse(b"a = 1 + 1;").unwrap());
