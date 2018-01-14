@@ -1,9 +1,9 @@
 #![feature(box_syntax)]
+#![feature(conservative_impl_trait)]
 
 extern crate advent;
 extern crate llvm_sys as llvm;
 
-use std::ptr;
 use std::ffi::{CStr, CString};
 use std::io::{stdin, Read};
 use std::collections::HashMap;
@@ -15,6 +15,162 @@ enum Var {
     Stack(LLVMValueRef),
 }
 
+struct Function<'a> {
+    name: &'a Name,
+    params: Option<&'a Vec<Name>>,
+    assigns: Option<HashMap<&'a Name, &'a Expression>>,
+    returns: &'a Expression,
+}
+
+impl<'a> Function<'a> {
+    fn new(
+        name: &'a Name,
+        params: Option<&'a Vec<Name>>,
+        assigns: Option<HashMap<&'a Name, &'a Expression>>,
+        returns: &'a Expression,
+    ) -> Function<'a> {
+        Function {
+            name: name,
+            params: params,
+            assigns: assigns,
+            returns: returns,
+        }
+    }
+
+    fn params_count(&self) -> u32 {
+        match self.params {
+            Some(v) => v.len() as u32,
+            None => 0,
+        }
+    }
+
+    fn params(&'a self) -> impl Iterator<Item = &'a Name> + 'a {
+        self.params.iter().flat_map(|v| v.iter())
+    }
+
+    fn assigns(&self) -> impl Iterator<Item = (&&Name, &&Expression)> {
+        self.assigns.iter().flat_map(|v| v.iter())
+    }
+
+    unsafe fn synthesise(
+        &self,
+        llvm_ctx: LLVMContextRef,
+        llvm_module: *mut llvm::LLVMModule,
+        llvm_builder: LLVMBuilderRef,
+        external_functions: &HashMap<Name, LLVMValueRef>,
+    ) -> LLVMValueRef {
+        FunctionSynthesiser {
+            function: &self,
+            llvm_ctx: llvm_ctx,
+            llvm_module: llvm_module,
+            llvm_builder: llvm_builder,
+        }.synthesise(external_functions)
+    }
+}
+
+struct FunctionSynthesiser<'a> {
+    function: &'a Function<'a>,
+    llvm_ctx: LLVMContextRef,
+    llvm_module: *mut llvm::LLVMModule,
+    llvm_builder: LLVMBuilderRef,
+}
+
+impl<'a> FunctionSynthesiser<'a> {
+    unsafe fn synthesise(&self, external_functions: &HashMap<Name, LLVMValueRef>) -> LLVMValueRef {
+        let llvm_fn = self.synthesise_fn();
+        let mut vars = self.synthesise_params(llvm_fn);
+        self.synthesise_entry(llvm_fn);
+        self.synthesise_assignments(&mut vars, external_functions);
+        self.synthesise_return(&mut vars, external_functions);
+        return llvm_fn;
+    }
+
+    unsafe fn synthesise_fn(&self) -> LLVMValueRef {
+        let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(self.llvm_ctx);
+        let mut params_types: Vec<_> = self.function.params().map(|_| llvm_i64_type).collect();
+        let llvm_fn_type = llvm::core::LLVMFunctionType(
+            llvm_i64_type,
+            params_types.as_mut_slice().as_mut_ptr(),
+            self.function.params_count(),
+            0,
+        );
+
+        let llvm_fn_name = into_llvm_name(self.function.name.clone());
+        llvm::core::LLVMAddFunction(self.llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type)
+    }
+
+    unsafe fn synthesise_params(&self, llvm_fn: LLVMValueRef) -> HashMap<Name, Var> {
+        self.function
+            .params()
+            .enumerate()
+            .map(|(param_index, param_name)| {
+                let llvm_param = llvm::core::LLVMGetParam(llvm_fn, param_index as u32);
+                let llvm_param_name = into_llvm_name(param_name.clone());
+                llvm::core::LLVMSetValueName(llvm_param, llvm_param_name.as_ptr());
+                (param_name.clone(), Var::Register(llvm_param))
+            })
+            .collect()
+    }
+
+    unsafe fn synthesise_entry(&self, llvm_fn: LLVMValueRef) {
+        let llvm_fn_entry_name = llvm_name("entry");
+        let llvm_fn_entry_block = llvm::core::LLVMAppendBasicBlockInContext(
+            self.llvm_ctx,
+            llvm_fn,
+            llvm_fn_entry_name.as_ptr(),
+        );
+        llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder, llvm_fn_entry_block);
+    }
+
+    unsafe fn synthesise_assignments(
+        &self,
+        vars: &mut HashMap<Name, Var>,
+        external_functions: &HashMap<Name, LLVMValueRef>,
+    ) {
+        let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(self.llvm_ctx);
+
+        for (var_name, _) in self.function.assigns() {
+            let llvm_var_name = into_llvm_name(var_name.clone().clone());
+            let llvm_var_pointer = llvm::core::LLVMBuildAlloca(
+                self.llvm_builder,
+                llvm_i64_type,
+                llvm_var_name.as_ptr(),
+            );
+            vars.insert(var_name.clone().clone(), Var::Stack(llvm_var_pointer));
+        }
+
+        for (ref var_name, ref var_expression) in self.function.assigns() {
+            var_assignment_codegen(
+                self.llvm_ctx,
+                self.llvm_module,
+                self.llvm_builder,
+                var_name,
+                var_expression,
+                &vars,
+                &external_functions,
+            );
+        }
+    }
+
+    unsafe fn synthesise_return(
+        &self,
+        mut vars: &mut HashMap<Name, Var>,
+        external_functions: &HashMap<Name, LLVMValueRef>,
+    ) {
+        llvm::core::LLVMBuildRet(
+            self.llvm_builder,
+            expression_codegen(
+                self.llvm_ctx,
+                self.llvm_module,
+                self.llvm_builder,
+                self.function.returns,
+                &mut vars,
+                external_functions,
+            ),
+        );
+    }
+}
+
 fn main() {
     let mut input = String::new();
     let stdin = stdin();
@@ -23,47 +179,39 @@ fn main() {
     let statements = parser::parse(input.as_str().as_bytes()).unwrap();
 
     unsafe {
-        codegen(statements.0);
+        codegen(&statements.0);
     }
 }
 
-unsafe fn codegen(statements: Vec<Statement>) {
+unsafe fn codegen(statements: &Vec<Statement>) {
     let ctx = llvm::core::LLVMContextCreate();
     let module = llvm::core::LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
     let builder = llvm::core::LLVMCreateBuilderInContext(ctx);
 
-    let function_name = llvm_name("main");
-    let i64_type = llvm::core::LLVMInt64TypeInContext(ctx);
-    let function_type = llvm::core::LLVMFunctionType(i64_type, ptr::null_mut(), 0, 0);
-    let main_function = llvm::core::LLVMAddFunction(module, function_name.as_ptr(), function_type);
-
-    let entry_name = llvm_name("entry");
-    let bb = llvm::core::LLVMAppendBasicBlockInContext(ctx, main_function, entry_name.as_ptr());
-
-    let mut vars = HashMap::new();
-    let mut fns = HashMap::new();
-    for statement in &statements {
+    let mut llvm_functions = HashMap::new();
+    for statement in statements {
         if let &Statement::FnDefinition(ref name, ref params, ref expr) = statement {
-            fn_definition_codegen(ctx, module, builder, name, params, expr, &mut fns);
+            let function = Function::new(name, Some(params), None, expr);
+            let llvm_function = function.synthesise(ctx, module, builder, &llvm_functions);
+            llvm_functions.insert(name.clone(), llvm_function);
         }
     }
 
-    llvm::core::LLVMPositionBuilderAtEnd(builder, bb);
-
-    for statement in &statements {
-        if let &Statement::VarAssignment(ref name, ..) = statement {
-            let var_name = into_llvm_name(name.clone());
-            let pointer = llvm::core::LLVMBuildAlloca(builder, i64_type, var_name.as_ptr());
-            vars.insert(name.clone(), Var::Stack(pointer));
-        }
-    }
-    for statement in &statements {
-        if let &Statement::VarAssignment(ref name, ref expr) = statement {
-            var_assignment_codegen(ctx, module, builder, name, expr, &vars, &fns);
-        }
-    }
-
-    llvm::core::LLVMBuildRet(builder, llvm::core::LLVMConstInt(i64_type, 0, 0));
+    let main_assigns = statements
+        .iter()
+        .filter_map(|statement| match statement {
+            &Statement::VarAssignment(ref name, ref expr) => Some((name, expr)),
+            _ => None,
+        })
+        .collect();
+    let main_function_name = Name::new("main");
+    let main_function = Function::new(
+        &main_function_name,
+        None,
+        Some(main_assigns),
+        &Expression::Operand(Operand::I64(0)),
+    );
+    main_function.synthesise(ctx, module, builder, &llvm_functions);
 
     let c = llvm::core::LLVMPrintModuleToString(module);
     let llvm_ir_cstring = CStr::from_ptr(c).to_string_lossy();
@@ -86,49 +234,10 @@ unsafe fn var_assignment_codegen(
 ) {
     let pointer = match vars.get(name).unwrap() {
         &Var::Register(_) => unimplemented!(),
-        &Var::Stack(ref var) => *var
+        &Var::Stack(ref var) => *var,
     };
     let value = expression_codegen(ctx, module, builder, expr, vars, fns);
     llvm::core::LLVMBuildStore(builder, value, pointer);
-}
-
-unsafe fn fn_definition_codegen(
-    ctx: LLVMContextRef,
-    module: *mut llvm::LLVMModule,
-    builder: LLVMBuilderRef,
-    name: &Name,
-    params: &Vec<Name>,
-    expr: &Expression,
-    fns: &mut HashMap<Name, LLVMValueRef>,
-) {
-    let i64_type = llvm::core::LLVMInt64TypeInContext(ctx);
-
-    let function_name = into_llvm_name(name.clone());
-
-    let mut params_names: Vec<*mut llvm::LLVMType> = params.iter().map(|_| i64_type).collect();
-    let params_names2 = params_names.as_mut_slice();
-    let function_type =
-        llvm::core::LLVMFunctionType(i64_type, params_names2.as_mut_ptr(), params.len() as u32, 0);
-    let function = llvm::core::LLVMAddFunction(module, function_name.as_ptr(), function_type);
-
-    let mut arguments = HashMap::new();
-    for (i, param_name) in params.iter().enumerate() {
-        let param = llvm::core::LLVMGetParam(function, i as u32);
-        let name = into_llvm_name(param_name.clone());
-        llvm::core::LLVMSetValueName(param, name.as_ptr());
-        arguments.insert(param_name.clone(), Var::Register(param));
-    }
-
-    let entry_name = llvm_name("entry");
-    let bb = llvm::core::LLVMAppendBasicBlockInContext(ctx, function, entry_name.as_ptr());
-    llvm::core::LLVMPositionBuilderAtEnd(builder, bb);
-
-    llvm::core::LLVMBuildRet(
-        builder,
-        expression_codegen(ctx, module, builder, expr, &mut arguments, fns),
-    );
-
-    fns.insert(name.clone(), function);
 }
 
 unsafe fn expression_codegen(
@@ -170,15 +279,13 @@ unsafe fn operand_codegen(
         &Operand::Group(ref inner_expr) => {
             expression_codegen(ctx, module, builder, inner_expr, vars, fns)
         }
-        &Operand::VarSubstitution(ref var_name) => {
-            match vars.get(var_name).unwrap() {
-                &Var::Register(ref var) => *var,
-                &Var::Stack(ref var) => {
-                    let name = into_llvm_name(var_name.clone());
-                    llvm::core::LLVMBuildLoad(builder, *var, name.as_ptr())
-                }
+        &Operand::VarSubstitution(ref var_name) => match vars.get(var_name).unwrap() {
+            &Var::Register(ref var) => *var,
+            &Var::Stack(ref var) => {
+                let name = into_llvm_name(var_name.clone());
+                llvm::core::LLVMBuildLoad(builder, *var, name.as_ptr())
             }
-        }
+        },
         &Operand::FnApplication(ref fn_name, ref arguments) => {
             let name = into_llvm_name(fn_name.clone());
             let function = fns.get(fn_name).unwrap();
