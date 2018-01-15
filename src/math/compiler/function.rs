@@ -130,7 +130,6 @@ impl<'a> FunctionSynthesiser<'a> {
         for (ref var_name, ref var_expression) in self.function.assigns() {
             var_assignment_codegen(
                 self.llvm_ctx,
-                self.llvm_module,
                 self.llvm_builder,
                 var_name,
                 var_expression,
@@ -147,9 +146,8 @@ impl<'a> FunctionSynthesiser<'a> {
     ) {
         llvm::core::LLVMBuildRet(
             self.llvm_builder,
-            expression_codegen(
+            ExpressionSynthesiser::synthesise(
                 self.llvm_ctx,
-                self.llvm_module,
                 self.llvm_builder,
                 self.function.returns,
                 &mut vars,
