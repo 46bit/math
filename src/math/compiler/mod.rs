@@ -99,6 +99,7 @@ unsafe fn synthesise(
         }
     }
 
+    // FIXME: Construct a string type, don't create an entire global string.
     let format_string_name = llvm_name("integer_format_string");
     let format_string = llvm_name("%d");
     let llvm_format_string = llvm::core::LLVMBuildGlobalString(
