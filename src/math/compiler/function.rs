@@ -7,6 +7,7 @@ pub struct Function<'a> {
     pub name: &'a Name,
     params: Option<&'a Vec<Name>>,
     assigns: Option<HashMap<&'a Name, &'a Expression>>,
+    prints: Option<&'a Vec<Name>>,
     pub returns: &'a Expression,
 }
 
@@ -15,12 +16,14 @@ impl<'a> Function<'a> {
         name: &'a Name,
         params: Option<&'a Vec<Name>>,
         assigns: Option<HashMap<&'a Name, &'a Expression>>,
+        prints: Option<&'a Vec<Name>>,
         returns: &'a Expression,
     ) -> Function<'a> {
         Function {
             name: name,
             params: params,
             assigns: assigns,
+            prints: prints,
             returns: returns,
         }
     }
@@ -38,6 +41,10 @@ impl<'a> Function<'a> {
 
     pub fn assigns(&self) -> impl Iterator<Item = (&&Name, &&Expression)> {
         self.assigns.iter().flat_map(|v| v.iter())
+    }
+
+    pub fn prints(&'a self) -> impl Iterator<Item = &'a Name> + 'a {
+        self.prints.iter().flat_map(|v| v.iter())
     }
 
     pub unsafe fn synthesise(
@@ -69,6 +76,7 @@ impl<'a> FunctionSynthesiser<'a> {
         let mut vars = self.synthesise_params(llvm_fn);
         self.synthesise_entry(llvm_fn);
         self.synthesise_assignments(&mut vars, external_functions);
+        self.synthesise_prints(&mut vars, external_functions);
         self.synthesise_return(&mut vars, external_functions);
         return llvm_fn;
     }
@@ -135,6 +143,41 @@ impl<'a> FunctionSynthesiser<'a> {
                 var_expression,
                 &vars,
                 &external_functions,
+            );
+        }
+    }
+
+    unsafe fn synthesise_prints(
+        &self,
+        vars: &mut HashMap<Name, Var>,
+        external_functions: &HashMap<Name, LLVMValueRef>,
+    ) {
+        for var_name in self.function.prints() {
+            let printf_template_name = llvm_name("printf_template");
+            let printf_template = llvm_name("%d\n");
+            let llvm_printf_template = llvm::core::LLVMBuildGlobalString(
+                self.llvm_builder,
+                printf_template.as_ptr(),
+                printf_template_name.as_ptr(),
+            );
+
+            let llvm_var_pointer = ExpressionSynthesiser::synthesise(
+                self.llvm_ctx,
+                self.llvm_builder,
+                &Expression::Operand(Operand::VarSubstitution(var_name.clone())),
+                &vars,
+                external_functions,
+            );
+
+            let llvm_printf_fn = external_functions.get(&Name::new("printf")).unwrap();
+            let llvm_args_slice = &mut [llvm_printf_template, llvm_var_pointer];
+            let llvm_fn_name = llvm_name("printf");
+            llvm::core::LLVMBuildCall(
+                self.llvm_builder,
+                *llvm_printf_fn,
+                llvm_args_slice.as_mut_ptr(),
+                llvm_args_slice.len() as u32,
+                llvm_fn_name.as_ptr(),
             );
         }
     }

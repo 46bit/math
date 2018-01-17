@@ -84,19 +84,38 @@ where
 unsafe fn synthesise(
     statements: &Vec<Statement>,
 ) -> Result<(*mut llvm::LLVMContext, LLVMModuleRef), Error> {
-    let ctx = llvm::core::LLVMContextCreate();
-    let module = llvm::core::LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
-    let builder = llvm::core::LLVMCreateBuilderInContext(ctx);
+    let llvm_ctx = llvm::core::LLVMContextCreate();
+    let llvm_module = llvm::core::LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
+    let llvm_builder = llvm::core::LLVMCreateBuilderInContext(llvm_ctx);
 
     let mut llvm_functions = HashMap::new();
+
     for statement in statements {
         if let &Statement::FnDefinition(ref name, ref params, ref expr) = statement {
-            let function = Function::new(name, Some(params), None, expr);
-            let llvm_function = function.synthesise(ctx, module, builder, &llvm_functions);
+            let function = Function::new(name, Some(params), None, None, expr);
+            let llvm_function =
+                function.synthesise(llvm_ctx, llvm_module, llvm_builder, &llvm_functions);
             llvm_functions.insert(name.clone(), llvm_function);
         }
     }
 
+    let format_string_name = llvm_name("integer_format_string");
+    let format_string = llvm_name("%d");
+    let llvm_format_string = llvm::core::LLVMBuildGlobalString(
+        llvm_builder,
+        format_string.as_ptr(),
+        format_string_name.as_ptr(),
+    );
+    let llvm_string_type = llvm::core::LLVMTypeOf(llvm_format_string);
+    let llvm_i32_type = llvm::core::LLVMInt32TypeInContext(llvm_ctx);
+    let params_types = &mut [llvm_string_type];
+    let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 1, 0);
+    let llvm_fn_name = llvm_name("printf");
+    let llvm_printf_fn =
+        llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
+    llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
+
+    let main_prints = vec![Name::new("a"), Name::new("b")];
     let main_assigns = statements
         .iter()
         .filter_map(|statement| match statement {
@@ -109,13 +128,14 @@ unsafe fn synthesise(
         &main_function_name,
         None,
         Some(main_assigns),
+        Some(&main_prints),
         &Expression::Operand(Operand::I64(0)),
     );
-    main_function.synthesise(ctx, module, builder, &llvm_functions);
+    main_function.synthesise(llvm_ctx, llvm_module, llvm_builder, &llvm_functions);
 
-    llvm::core::LLVMDisposeBuilder(builder);
+    llvm::core::LLVMDisposeBuilder(llvm_builder);
     // FIXME: Error handling.
-    return Ok((ctx, module));
+    return Ok((llvm_ctx, llvm_module));
 }
 
 unsafe fn var_assignment_codegen(
@@ -134,6 +154,7 @@ unsafe fn var_assignment_codegen(
     llvm::core::LLVMBuildStore(builder, value, llvm_var);
 }
 
+#[derive(Debug, Clone)]
 pub enum Var {
     Register(LLVMValueRef),
     Stack(LLVMValueRef),
