@@ -64,6 +64,67 @@ fn arbitrary_name<G: Gen>(g: &mut G, level: usize) -> Name {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Program {
+    inputs: Vec<Name>,
+    statements: Statements,
+    outputs: Vec<Name>,
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "inputs {};\n",
+            self.inputs
+                .iter()
+                .map(|i| format!("{}", i))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        write!(f, "{}\n", self.statements)?;
+        write!(
+            f,
+            "outputs {};\n",
+            self.outputs
+                .iter()
+                .map(|i| format!("{}", i))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+#[cfg(test)]
+impl Arbitrary for Program {
+    fn arbitrary<G: Gen>(g: &mut G) -> Program {
+        arbitrary_program(g, 0, &mut HashSet::new(), &mut HashSet::new())
+    }
+}
+
+#[cfg(test)]
+fn arbitrary_program<G: Gen>(
+    g: &mut G,
+    level: usize,
+    vars: &mut HashSet<Name>,
+    fns: &mut HashSet<(Name, usize)>,
+) -> Statements {
+    let size = g.size();
+    let inputs = (0..g.gen_range(0, size))
+        .map(|_| Name::arbitrary(g))
+        .collect();
+
+    let mut vars = HashSet::new();
+    vars.extend(inputs.iter().cloned().collect());
+    let statements = arbitrary_statements(g, 1, &mut vars, HashMap::new());
+
+    let mut outputs = vars.clone();
+    g.shuffle(&mut outputs);
+    let outputs = outputs.into_iter().take(size).collect();
+
+    Program::new(inputs, statements, outputs)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statements(pub Vec<Statement>);
 
 impl fmt::Display for Statements {
@@ -78,19 +139,29 @@ impl fmt::Display for Statements {
 #[cfg(test)]
 impl Arbitrary for Statements {
     fn arbitrary<G: Gen>(g: &mut G) -> Statements {
-        let size = g.size();
-        (0..g.gen_range(0, size))
-            .fold(
-                (Statements(Vec::new()), HashSet::new(), HashSet::new()),
-                |(mut statements, mut vars, mut fns), _| {
-                    statements
-                        .0
-                        .push(arbitrary_statement(g, 1, &mut vars, &mut fns));
-                    (statements, vars, fns)
-                },
-            )
-            .0
+        arbitrary_statements(g, 0, &mut HashSet::new(), &mut HashSet::new())
     }
+}
+
+#[cfg(test)]
+fn arbitrary_statements<G: Gen>(
+    g: &mut G,
+    level: usize,
+    vars: &mut HashSet<Name>,
+    fns: &mut HashSet<(Name, usize)>,
+) -> Statements {
+    let size = g.size();
+    (0..g.gen_range(0, size))
+        .fold(
+            (Statements(Vec::new()), HashSet::new(), HashSet::new()),
+            |(mut statements, mut vars, mut fns), _| {
+                statements
+                    .0
+                    .push(arbitrary_statement(g, 1, &mut vars, &mut fns));
+                (statements, vars, fns)
+            },
+        )
+        .0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
