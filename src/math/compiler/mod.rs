@@ -17,8 +17,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {}
 
-pub unsafe fn compile(statements: &Statements) -> Result<String, Error> {
-    let (llvm_ctx, llvm_module) = synthesise(&statements.0)?;
+pub unsafe fn compile(program: &Program) -> Result<String, Error> {
+    let (llvm_ctx, llvm_module) = synthesise(&program)?;
 
     let c = llvm::core::LLVMPrintModuleToString(llvm_module);
     let llvm_ir = CStr::from_ptr(c).to_string_lossy().into_owned();
@@ -81,16 +81,14 @@ where
     llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
 }
 
-unsafe fn synthesise(
-    statements: &Vec<Statement>,
-) -> Result<(*mut llvm::LLVMContext, LLVMModuleRef), Error> {
+unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMModuleRef), Error> {
     let llvm_ctx = llvm::core::LLVMContextCreate();
     let llvm_module = llvm::core::LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
     let llvm_builder = llvm::core::LLVMCreateBuilderInContext(llvm_ctx);
 
     let mut llvm_functions = HashMap::new();
 
-    for statement in statements {
+    for statement in &program.statements.0 {
         if let &Statement::FnDefinition(ref name, ref params, ref expr) = statement {
             let function = Function::new(name, Some(params), None, None, expr);
             let llvm_function =
@@ -117,7 +115,9 @@ unsafe fn synthesise(
     llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
 
     let main_prints = vec![Name::new("a"), Name::new("b")];
-    let main_assigns = statements
+    let main_assigns = program
+        .statements
+        .0
         .iter()
         .filter_map(|statement| match statement {
             &Statement::VarAssignment(ref name, ref expr) => Some((name, expr)),

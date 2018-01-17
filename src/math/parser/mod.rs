@@ -4,24 +4,26 @@ mod name;
 mod expression;
 mod statement;
 mod shunting_yard;
+mod program;
 
 pub use self::name::*;
 pub use self::expression::*;
 pub use self::statement::*;
+pub use self::program::*;
 
 use super::*;
 use nom::{simple_errors, IResult, Needed};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    RemainingInput(Vec<u8>, Statements),
+    RemainingInput(Vec<u8>, Program),
     Nom(simple_errors::Err<u32>),
     NomIncomplete(Needed),
 }
 
-pub fn parse(s: &[u8]) -> Result<Statements, Error> {
-    match statements(s) {
-        IResult::Done(&[], statements) => Ok(statements),
+pub fn parse(s: &[u8]) -> Result<Program, Error> {
+    match program(s) {
+        IResult::Done(&[], program) => Ok(program),
         IResult::Done(i, o) => Err(Error::RemainingInput(i.to_vec(), o)),
         IResult::Error(e) => Err(Error::Nom(e)),
         IResult::Incomplete(n) => Err(Error::NomIncomplete(n)),
@@ -31,7 +33,10 @@ pub fn parse(s: &[u8]) -> Result<Statements, Error> {
 pub fn parse_one(s: &[u8]) -> Result<Statement, Error> {
     match statement(s) {
         IResult::Done(&[], statement) => Ok(statement),
-        IResult::Done(i, o) => Err(Error::RemainingInput(i.to_vec(), Statements(vec![o]))),
+        IResult::Done(i, o) => Err(Error::RemainingInput(
+            i.to_vec(),
+            Program::new(vec![], Statements(vec![o]), vec![]),
+        )),
         IResult::Error(e) => Err(Error::Nom(e)),
         IResult::Incomplete(n) => Err(Error::NomIncomplete(n)),
     }
@@ -58,7 +63,7 @@ mod tests {
         parse_one(b"f(a) = a * 3;").unwrap();
     }
 
-    fn parses_correctly_prop(input: Statements) -> bool {
+    fn parses_correctly_prop(input: Program) -> bool {
         format!("{}", parse(format!("{}", input).as_bytes()).unwrap()) == format!("{}", input)
     }
 
@@ -69,7 +74,7 @@ mod tests {
         // exploring potential edgecases.
         for size in 1..11 {
             let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
-            qc.quickcheck(parses_correctly_prop as fn(Statements) -> bool);
+            qc.quickcheck(parses_correctly_prop as fn(Program) -> bool);
         }
     }
 }

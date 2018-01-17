@@ -62,13 +62,13 @@ fn main() {
     //
     println!(
         "{}",
-        math::compile(b"a = 1 + 89 / 9;\na(i, j) = 5 * i - j;\nb = 5 * a(5 * -3, 2) + 5;").unwrap()
+        math::compile(b"inputs i;\na = 1 + 89 / 9;\nz(i, j) = 5 * i - j;\nb = 5 * z(5 * -3, 2) + 5;\noutputs a, b;").unwrap()
     );
 
-    println!("{}", math::parser::parse(b"a = 1 + 1;").unwrap());
-    println!("{}", math::parser::parse(b"a = 1 + 1 + 1;").unwrap());
-    println!(
-        "{}",
-        math::parser::parse(b"a = 1 + 1 + 1 * 1 + 1 * 1 * 1;").unwrap()
-    );
+    //println!("{}", math::parser::parse(b"a = 1 + 1;").unwrap());
+    //println!("{}", math::parser::parse(b"a = 1 + 1 + 1;").unwrap());
+    //println!(
+    //    "{}",
+    //    math::parser::parse(b"a = 1 + 1 + 1 * 1 + 1 * 1 * 1;").unwrap()
+    //);
 }
