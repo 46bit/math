@@ -7,10 +7,9 @@ pub enum Error {
     UnknownFunction(Name),
 }
 
-pub fn execute(statements: &Statements) -> Result<HashMap<Name, i64>, Error> {
+pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<HashMap<Name, i64>, Error> {
     let mut executor = Executor::new();
-    executor.run(&statements.0);
-    return Ok(executor.variables);
+    executor.run(&program, inputs)
 }
 
 pub struct Executor {
@@ -26,10 +25,20 @@ impl Executor {
         }
     }
 
-    pub fn run(&mut self, statements: &Vec<Statement>) {
-        for statement in statements {
-            self.execute(statement)
+    pub fn run(&mut self, program: &Program, inputs: &Vec<i64>) -> HashMap<Name, i64> {
+        // FIXME: Error handling
+        assert_eq!(program.inputs.len(), inputs.len());
+        self.variables.extend(program.inputs.iter().cloned().zip(inputs));
+        for statement in program.statements.0 {
+            self.execute(statement);
         }
+        // FIXME: Error handling
+        program.outputs
+            .iter()
+            .map(|output_name| {
+                (output_name.clone(), self.variables[output_name])
+            })
+            .collect()
     }
 
     pub fn execute(&mut self, statement: &Statement) {

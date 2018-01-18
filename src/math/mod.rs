@@ -1,5 +1,5 @@
 pub mod parser;
-//pub mod interpreter;
+pub mod interpreter;
 pub mod compiler;
 
 use std::fmt;
@@ -12,15 +12,15 @@ use quickcheck::{Arbitrary, Gen};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     ParseError(parser::Error),
-    //InterpreterError(interpreter::Error),
+    InterpreterError(interpreter::Error),
     CompilerError(compiler::Error),
 }
 
-//pub fn interpret(s: &[u8]) -> Result<HashMap<Name, i64>, Error> {
-//    let program = parser::parse(s).map_err(Error::ParseError)?;
-//    let results = interpreter::execute(&program).map_err(Error::InterpreterError)?;
-//    return Ok(results);
-//}
+pub fn interpret(s: &[u8], inputs: &Vec<i64>) -> Result<HashMap<Name, i64>, Error> {
+    let program = parser::parse(s).map_err(Error::ParseError)?;
+    let outputs = interpreter::execute(&program, inputs).map_err(Error::InterpreterError)?;
+    return Ok(outputs);
+}
 
 pub fn compile(s: &[u8]) -> Result<String, Error> {
     let program = parser::parse(s).map_err(Error::ParseError)?;
