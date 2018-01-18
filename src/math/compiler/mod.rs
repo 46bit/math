@@ -1,7 +1,9 @@
 mod function;
 mod expression;
+mod var;
 
 use super::*;
+use self::var::*;
 use self::function::*;
 use self::expression::*;
 use llvm;
@@ -137,28 +139,6 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
     llvm::core::LLVMDisposeBuilder(llvm_builder);
     // FIXME: Error handling.
     return Ok((llvm_ctx, llvm_module));
-}
-
-unsafe fn var_assignment_codegen(
-    ctx: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    name: &Name,
-    expr: &Expression,
-    vars: &HashMap<Name, Var>,
-    fns: &HashMap<Name, LLVMValueRef>,
-) {
-    let llvm_var = match vars.get(name).unwrap() {
-        &Var::Stack(var) => var,
-        &Var::Register(_) => unimplemented!(),
-    };
-    let value = ExpressionSynthesiser::synthesise(ctx, builder, expr, vars, fns);
-    llvm::core::LLVMBuildStore(builder, value, llvm_var);
-}
-
-#[derive(Debug, Clone)]
-pub enum Var {
-    Register(LLVMValueRef),
-    Stack(LLVMValueRef),
 }
 
 fn llvm_name(s: &str) -> CString {

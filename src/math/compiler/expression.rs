@@ -65,40 +65,20 @@ impl<'a> ExpressionSynthesiser<'a> {
         match operand {
             &Operand::I64(n) => llvm::core::LLVMConstInt(i64_type, n as u64, 0),
             &Operand::Group(ref expression) => self.synthesise_expression(expression),
-            &Operand::VarSubstitution(ref name) => self.synthesise_var_substitution(name),
+            &Operand::VarSubstitution(ref name) => {
+                synthesise_var_substitution(self.llvm_builder, name, self.vars)
+            }
             &Operand::FnApplication(ref name, ref args) => {
-                self.synthesise_fn_application(name, args)
+                let mut llvm_args: Vec<_> = args.iter()
+                    .map(|arg| self.synthesise_expression(arg))
+                    .collect();
+                synthesise_fn_application(
+                    self.llvm_builder,
+                    name,
+                    llvm_args.as_mut_slice(),
+                    self.fns,
+                )
             }
         }
-    }
-
-    unsafe fn synthesise_var_substitution(&self, var_name: &Name) -> LLVMValueRef {
-        match self.vars.get(var_name).unwrap() {
-            &Var::Register(llvm_var) => llvm_var,
-            &Var::Stack(llvm_var) => {
-                let llvm_var_name = into_llvm_name(var_name.clone());
-                llvm::core::LLVMBuildLoad(self.llvm_builder, llvm_var, llvm_var_name.as_ptr())
-            }
-        }
-    }
-
-    unsafe fn synthesise_fn_application(
-        &self,
-        fn_name: &Name,
-        args: &Vec<Expression>,
-    ) -> LLVMValueRef {
-        let llvm_function = self.fns.get(fn_name).unwrap();
-        let mut llvm_args: Vec<_> = args.iter()
-            .map(|arg| self.synthesise_expression(arg))
-            .collect();
-        let llvm_args_slice = llvm_args.as_mut_slice();
-        let llvm_fn_name = into_llvm_name(fn_name.clone());
-        llvm::core::LLVMBuildCall(
-            self.llvm_builder,
-            *llvm_function,
-            llvm_args_slice.as_mut_ptr(),
-            llvm_args_slice.len() as u32,
-            llvm_fn_name.as_ptr(),
-        )
     }
 }

@@ -161,23 +161,12 @@ impl<'a> FunctionSynthesiser<'a> {
                 printf_template_name.as_ptr(),
             );
 
-            let llvm_var_pointer = ExpressionSynthesiser::synthesise(
-                self.llvm_ctx,
+            let llvm_var_pointer = synthesise_var_substitution(self.llvm_builder, var_name, vars);
+            synthesise_fn_application(
                 self.llvm_builder,
-                &Expression::Operand(Operand::VarSubstitution(var_name.clone())),
-                &vars,
+                &Name::new("printf"),
+                &mut [llvm_printf_template, llvm_var_pointer],
                 external_functions,
-            );
-
-            let llvm_printf_fn = external_functions.get(&Name::new("printf")).unwrap();
-            let llvm_args_slice = &mut [llvm_printf_template, llvm_var_pointer];
-            let llvm_fn_name = llvm_name("printf");
-            llvm::core::LLVMBuildCall(
-                self.llvm_builder,
-                *llvm_printf_fn,
-                llvm_args_slice.as_mut_ptr(),
-                llvm_args_slice.len() as u32,
-                llvm_fn_name.as_ptr(),
             );
         }
     }
@@ -198,4 +187,21 @@ impl<'a> FunctionSynthesiser<'a> {
             ),
         );
     }
+}
+
+pub unsafe fn synthesise_fn_application(
+    llvm_builder: LLVMBuilderRef,
+    name: &Name,
+    llvm_args_slice: &mut [LLVMValueRef],
+    fns: &HashMap<Name, LLVMValueRef>,
+) -> LLVMValueRef {
+    let llvm_function = fns.get(name).unwrap();
+    let llvm_fn_name = into_llvm_name(name.clone());
+    llvm::core::LLVMBuildCall(
+        llvm_builder,
+        *llvm_function,
+        llvm_args_slice.as_mut_ptr(),
+        llvm_args_slice.len() as u32,
+        llvm_fn_name.as_ptr(),
+    )
 }
