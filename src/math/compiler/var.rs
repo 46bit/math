@@ -1,7 +1,6 @@
 use super::*;
 use llvm;
 use llvm::prelude::*;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Var {
@@ -9,32 +8,44 @@ pub enum Var {
     Stack(LLVMValueRef),
 }
 
-pub unsafe fn var_assignment_codegen(
-    ctx: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    name: &Name,
-    expr: &Expression,
-    vars: &HashMap<Name, Var>,
-    fns: &HashMap<Name, LLVMValueRef>,
-) {
-    let llvm_var = match vars.get(name).unwrap() {
-        &Var::Stack(var) => var,
-        &Var::Register(_) => unimplemented!(),
-    };
-    let value = ExpressionSynthesiser::synthesise(ctx, builder, expr, vars, fns);
-    llvm::core::LLVMBuildStore(builder, value, llvm_var);
-}
+impl Var {
+    pub unsafe fn synthesise_allocation(
+        llvm_builder: LLVMBuilderRef,
+        name: Name,
+        llvm_type: LLVMTypeRef,
+    ) -> Var {
+        let llvm_name = into_llvm_name(name);
+        Var::Stack(llvm::core::LLVMBuildAlloca(
+            llvm_builder,
+            llvm_type,
+            llvm_name.as_ptr(),
+        ))
+    }
 
-pub unsafe fn synthesise_var_substitution(
-    llvm_builder: LLVMBuilderRef,
-    name: &Name,
-    vars: &HashMap<Name, Var>,
-) -> LLVMValueRef {
-    match vars.get(name).unwrap() {
-        &Var::Register(llvm_var) => llvm_var,
-        &Var::Stack(llvm_var) => {
-            let llvm_var_name = into_llvm_name(name.clone());
-            llvm::core::LLVMBuildLoad(llvm_builder, llvm_var, llvm_var_name.as_ptr())
+    pub unsafe fn synthesise_assignment(
+        &self,
+        llvm_builder: LLVMBuilderRef,
+        llvm_value: LLVMValueRef,
+    ) {
+        match *self {
+            Var::Stack(llvm_var) => {
+                llvm::core::LLVMBuildStore(llvm_builder, llvm_value, llvm_var);
+            }
+            Var::Register(_) => unimplemented!(),
+        }
+    }
+
+    pub unsafe fn synthesise_substitution(
+        &self,
+        llvm_builder: LLVMBuilderRef,
+        name: &Name,
+    ) -> LLVMValueRef {
+        match *self {
+            Var::Register(llvm_var) => llvm_var,
+            Var::Stack(llvm_var) => {
+                let llvm_var_name = into_llvm_name(name.clone());
+                llvm::core::LLVMBuildLoad(llvm_builder, llvm_var, llvm_var_name.as_ptr())
+            }
         }
     }
 }

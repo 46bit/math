@@ -124,25 +124,24 @@ impl<'a> FunctionSynthesiser<'a> {
         external_functions: &HashMap<Name, LLVMValueRef>,
     ) {
         let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(self.llvm_ctx);
-
         for (var_name, _) in self.function.assigns() {
-            let llvm_var_name = into_llvm_name(var_name.clone().clone());
-            let llvm_var_pointer = llvm::core::LLVMBuildAlloca(
-                self.llvm_builder,
-                llvm_i64_type,
-                llvm_var_name.as_ptr(),
+            let var_name = var_name.clone().clone();
+            vars.insert(
+                var_name.clone(),
+                Var::synthesise_allocation(self.llvm_builder, var_name, llvm_i64_type),
             );
-            vars.insert(var_name.clone().clone(), Var::Stack(llvm_var_pointer));
         }
 
         for (ref var_name, ref var_expression) in self.function.assigns() {
-            var_assignment_codegen(
-                self.llvm_ctx,
+            vars[var_name].synthesise_assignment(
                 self.llvm_builder,
-                var_name,
-                var_expression,
-                &vars,
-                &external_functions,
+                ExpressionSynthesiser::synthesise(
+                    self.llvm_ctx,
+                    self.llvm_builder,
+                    var_expression,
+                    &vars,
+                    &external_functions,
+                ),
             );
         }
     }
@@ -161,11 +160,11 @@ impl<'a> FunctionSynthesiser<'a> {
                 printf_template_name.as_ptr(),
             );
 
-            let llvm_var_pointer = synthesise_var_substitution(self.llvm_builder, var_name, vars);
+            let llvm_var = vars[var_name].synthesise_substitution(self.llvm_builder, var_name);
             synthesise_fn_application(
                 self.llvm_builder,
                 &Name::new("printf"),
-                &mut [llvm_printf_template, llvm_var_pointer],
+                vec![llvm_printf_template, llvm_var],
                 external_functions,
             );
         }
@@ -192,11 +191,12 @@ impl<'a> FunctionSynthesiser<'a> {
 pub unsafe fn synthesise_fn_application(
     llvm_builder: LLVMBuilderRef,
     name: &Name,
-    llvm_args_slice: &mut [LLVMValueRef],
+    mut llvm_args: Vec<LLVMValueRef>,
     fns: &HashMap<Name, LLVMValueRef>,
 ) -> LLVMValueRef {
     let llvm_function = fns.get(name).unwrap();
     let llvm_fn_name = into_llvm_name(name.clone());
+    let llvm_args_slice = llvm_args.as_mut_slice();
     llvm::core::LLVMBuildCall(
         llvm_builder,
         *llvm_function,

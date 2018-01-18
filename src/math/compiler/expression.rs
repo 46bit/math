@@ -66,19 +66,14 @@ impl<'a> ExpressionSynthesiser<'a> {
             &Operand::I64(n) => llvm::core::LLVMConstInt(i64_type, n as u64, 0),
             &Operand::Group(ref expression) => self.synthesise_expression(expression),
             &Operand::VarSubstitution(ref name) => {
-                synthesise_var_substitution(self.llvm_builder, name, self.vars)
+                self.vars[name].synthesise_substitution(self.llvm_builder, name)
             }
-            &Operand::FnApplication(ref name, ref args) => {
-                let mut llvm_args: Vec<_> = args.iter()
-                    .map(|arg| self.synthesise_expression(arg))
-                    .collect();
-                synthesise_fn_application(
-                    self.llvm_builder,
-                    name,
-                    llvm_args.as_mut_slice(),
-                    self.fns,
-                )
-            }
+            &Operand::FnApplication(ref name, ref args) => synthesise_fn_application(
+                self.llvm_builder,
+                name,
+                args.iter().map(|e| self.synthesise_expression(e)).collect(),
+                self.fns,
+            ),
         }
     }
 }
