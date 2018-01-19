@@ -19,15 +19,14 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {}
 
-pub unsafe fn compile(program: &Program) -> Result<String, Error> {
+pub unsafe fn compile(program: &Program, out_file: &mut File) -> Result<String, Error> {
     let (llvm_ctx, llvm_module) = synthesise(&program)?;
 
     let c = llvm::core::LLVMPrintModuleToString(llvm_module);
     let llvm_ir = CStr::from_ptr(c).to_string_lossy().into_owned();
     llvm::core::LLVMDisposeMessage(c);
 
-    let mut out_file = File::create("a.o").unwrap();
-    emit(llvm_module, &mut out_file);
+    emit(llvm_module, out_file);
 
     llvm::core::LLVMDisposeModule(llvm_module);
     llvm::core::LLVMContextDispose(llvm_ctx);
@@ -116,7 +115,7 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
         llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
     llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
 
-    let main_prints = vec![Name::new("a"), Name::new("b")];
+    let main_prints = &program.outputs;
     let main_assigns = program
         .statements
         .0
