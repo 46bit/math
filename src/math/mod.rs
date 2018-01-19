@@ -4,7 +4,6 @@ pub mod compiler;
 
 use std::fmt;
 use std::fs::File;
-use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
 #[cfg(test)]
@@ -17,7 +16,7 @@ pub enum Error {
     CompilerError(compiler::Error),
 }
 
-pub fn interpret(s: &[u8], inputs: &Vec<i64>) -> Result<HashMap<Name, i64>, Error> {
+pub fn interpret(s: &[u8], inputs: &Vec<i64>) -> Result<Vec<(Name, i64)>, Error> {
     let program = parser::parse(s).map_err(Error::ParseError)?;
     let outputs = interpreter::execute(&program, inputs).map_err(Error::InterpreterError)?;
     return Ok(outputs);

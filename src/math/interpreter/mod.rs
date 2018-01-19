@@ -7,7 +7,7 @@ pub enum Error {
     UnknownFunction(Name),
 }
 
-pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<HashMap<Name, i64>, Error> {
+pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<Vec<(Name, i64)>, Error> {
     let mut executor = Executor::new();
     Ok(executor.run(&program, inputs))
 }
@@ -25,7 +25,7 @@ impl Executor {
         }
     }
 
-    pub fn run(&mut self, program: &Program, inputs: &Vec<i64>) -> HashMap<Name, i64> {
+    pub fn run(&mut self, program: &Program, inputs: &Vec<i64>) -> Vec<(Name, i64)> {
         // FIXME: Error handling
         assert_eq!(program.inputs.len(), inputs.len());
         self.variables
