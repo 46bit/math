@@ -4,7 +4,7 @@ pub mod compiler;
 
 use std::fmt;
 use std::fs::File;
-//use std::collections::HashMap;
+use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
 #[cfg(test)]
