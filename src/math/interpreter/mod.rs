@@ -120,65 +120,81 @@ mod tests {
 
     #[test]
     fn static_assignment() {
-        assert_eq!(
-            execute(&Statements(vec![
-                Statement::VarAssignment(as_name("i"), Expression::Operand(Operand::I64(1))),
-            ])).map(pairs),
-            Ok(vec![(as_name("i"), 1)])
-        );
+        let mut executor = Executor::new();
+        executor.execute(&Statement::VarAssignment(
+            as_name("i"),
+            Expression::Operand(Operand::I64(17)),
+        ));
+        assert_eq!(executor.variables.len(), 1);
+        assert_eq!(executor.variables[&as_name("i")], 17);
     }
 
     #[test]
     fn unused_fn_definition() {
+        let mut executor = Executor::new();
+        executor.execute(&Statement::FnDefinition(
+            as_name("f"),
+            vec![as_name("a"), as_name("b")],
+            Expression::Operation(
+                Operator::Multiply,
+                box Expression::Operand(Operand::VarSubstitution(as_name("a"))),
+                box Expression::Operand(Operand::VarSubstitution(as_name("b"))),
+            ),
+        ));
+        assert!(executor.variables.is_empty());
+        assert_eq!(executor.functions.len(), 1);
         assert_eq!(
-            execute(&Statements(vec![
-                Statement::FnDefinition(
-                    as_name("f"),
-                    vec![as_name("a"), as_name("b")],
-                    Expression::Operation(
-                        Operator::Multiply,
-                        box Expression::Operand(Operand::VarSubstitution(as_name("a"))),
-                        box Expression::Operand(Operand::VarSubstitution(as_name("b"))),
-                    ),
+            executor.functions[&as_name("f")],
+            (
+                vec![as_name("a"), as_name("b")],
+                Expression::Operation(
+                    Operator::Multiply,
+                    box Expression::Operand(Operand::VarSubstitution(as_name("a"))),
+                    box Expression::Operand(Operand::VarSubstitution(as_name("b"))),
                 ),
-            ])).map(pairs),
-            Ok(vec![])
+            )
         );
     }
 
     #[test]
     fn assignment_using_function() {
+        let mut executor = Executor::new();
+        executor.execute(&Statement::FnDefinition(
+            as_name("f"),
+            vec![as_name("a"), as_name("b")],
+            Expression::Operation(
+                Operator::Multiply,
+                box Expression::Operand(Operand::VarSubstitution(as_name("a"))),
+                box Expression::Operand(Operand::VarSubstitution(as_name("b"))),
+            ),
+        ));
+        executor.execute(&Statement::VarAssignment(
+            as_name("i"),
+            Expression::Operand(Operand::FnApplication(
+                as_name("f"),
+                vec![
+                    Expression::Operand(Operand::I64(2)),
+                    Expression::Operand(Operand::I64(3)),
+                ],
+            )),
+        ));
+        assert_eq!(executor.functions.len(), 1);
         assert_eq!(
-            execute(&Statements(vec![
-                Statement::FnDefinition(
-                    as_name("f"),
-                    vec![as_name("a"), as_name("b")],
-                    Expression::Operation(
-                        Operator::Multiply,
-                        box Expression::Operand(Operand::VarSubstitution(as_name("a"))),
-                        box Expression::Operand(Operand::VarSubstitution(as_name("b"))),
-                    ),
+            executor.functions[&as_name("f")],
+            (
+                vec![as_name("a"), as_name("b")],
+                Expression::Operation(
+                    Operator::Multiply,
+                    box Expression::Operand(Operand::VarSubstitution(as_name("a"))),
+                    box Expression::Operand(Operand::VarSubstitution(as_name("b"))),
                 ),
-                Statement::VarAssignment(
-                    as_name("i"),
-                    Expression::Operand(Operand::FnApplication(
-                        as_name("f"),
-                        vec![
-                            Expression::Operand(Operand::I64(2)),
-                            Expression::Operand(Operand::I64(3)),
-                        ],
-                    )),
-                ),
-            ])).map(pairs),
-            Ok(vec![(as_name("i"), 6)])
+            )
         );
+        assert_eq!(executor.variables.len(), 1);
+        assert_eq!(executor.variables[&as_name("i")], 6);
     }
 
     fn as_name(s: &str) -> Name {
         Name(s.to_string())
-    }
-
-    fn pairs(h: HashMap<Name, i64>) -> Vec<(Name, i64)> {
-        h.into_iter().collect()
     }
 }

@@ -11,7 +11,7 @@ named!(pub inputs<&[u8], Vec<Name>>,
 
 named!(pub outputs<&[u8], Vec<Name>>,
   do_parse!(
-    tag!("outputs ") >>
+    ws!(tag!("outputs")) >>
     output_names: call!(variable_names) >>
     ws!(tag!(";")) >>
     (output_names)

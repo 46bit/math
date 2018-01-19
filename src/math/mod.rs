@@ -4,9 +4,7 @@ pub mod compiler;
 
 use std::fmt;
 use std::fs::File;
-#[cfg(test)]
 use std::collections::HashSet;
-#[cfg(test)]
 use quickcheck::{Arbitrary, Gen};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,17 +41,15 @@ impl fmt::Display for Name {
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Name {
     fn arbitrary<G: Gen>(g: &mut G) -> Name {
         arbitrary_name(g, 0)
     }
 }
 
-#[cfg(test)]
 fn arbitrary_name<G: Gen>(g: &mut G, level: usize) -> Name {
     let size = g.size().saturating_sub(level).max(1);
-    let len = 0..g.gen_range(1, size);
+    let len = 0..g.gen_range(1, size + 1);
     Name(len.map(|i| {
         let chars = match i {
             0 => "abcdefghijklmnopqrstuvwxyz",
@@ -82,54 +78,67 @@ impl Program {
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "inputs {};\n",
-            self.inputs
-                .iter()
-                .map(|i| format!("{}", i))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )?;
-        write!(f, "{}\n", self.statements)?;
-        write!(
-            f,
-            "outputs {};\n",
-            self.outputs
-                .iter()
-                .map(|i| format!("{}", i))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+        write!(f, "inputs")?;
+        if !self.inputs.is_empty() {
+            write!(
+                f,
+                " {}",
+                self.inputs
+                    .iter()
+                    .map(|i| format!("{}", i))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        write!(f, ";\n")?;
+
+        if !self.statements.0.is_empty() {
+            write!(f, "{}\n", self.statements)?;
+        }
+
+        write!(f, "outputs")?;
+        if !self.outputs.is_empty() {
+            write!(
+                f,
+                " {}",
+                self.outputs
+                    .iter()
+                    .map(|i| format!("{}", i))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        write!(f, ";")
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Program {
     fn arbitrary<G: Gen>(g: &mut G) -> Program {
-        arbitrary_program(g, 0, &mut HashSet::new(), &mut HashSet::new())
+        arbitrary_program(g, &mut HashSet::new(), &mut HashSet::new())
     }
 }
 
-#[cfg(test)]
 fn arbitrary_program<G: Gen>(
     g: &mut G,
-    level: usize,
-    vars: &mut HashSet<Name>,
+    mut vars: &mut HashSet<Name>,
     fns: &mut HashSet<(Name, usize)>,
-) -> Statements {
+) -> Program {
     let size = g.size();
-    let inputs = (0..g.gen_range(0, size))
-        .map(|_| Name::arbitrary(g))
+    let input_len = 0..g.gen_range(0, size + 1);
+    let inputs: Vec<Name> = input_len.map(|_| arbitrary_name(g, 1)).collect();
+
+    vars.extend(inputs.iter().cloned());
+    let statements = arbitrary_statements(g, &mut vars, fns);
+
+    let output_len = g.gen_range(0, size + 1);
+    let mut outputs = vars.clone().into_iter().collect::<Vec<_>>();
+    let output_slice = outputs.as_mut_slice();
+    g.shuffle(output_slice);
+    let outputs = output_slice
+        .into_iter()
+        .take(output_len)
+        .map(|o| o.clone())
         .collect();
-
-    let mut vars = HashSet::new();
-    vars.extend(inputs.iter().cloned().collect());
-    let statements = arbitrary_statements(g, 1, &mut vars, HashMap::new());
-
-    let mut outputs = vars.clone();
-    g.shuffle(&mut outputs);
-    let outputs = outputs.into_iter().take(size).collect();
 
     Program::new(inputs, statements, outputs)
 }
@@ -139,31 +148,34 @@ pub struct Statements(pub Vec<Statement>);
 
 impl fmt::Display for Statements {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for statement in &self.0 {
-            write!(f, "{}\n", statement)?;
-        }
-        Ok(())
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|s| format!("{}", s))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Statements {
     fn arbitrary<G: Gen>(g: &mut G) -> Statements {
-        arbitrary_statements(g, 0, &mut HashSet::new(), &mut HashSet::new())
+        arbitrary_statements(g, &mut HashSet::new(), &mut HashSet::new())
     }
 }
 
-#[cfg(test)]
 fn arbitrary_statements<G: Gen>(
     g: &mut G,
-    level: usize,
     vars: &mut HashSet<Name>,
     fns: &mut HashSet<(Name, usize)>,
 ) -> Statements {
     let size = g.size();
-    (0..g.gen_range(0, size))
+    let statements_len = 0..g.gen_range(0, size + 1);
+    statements_len
         .fold(
-            (Statements(Vec::new()), HashSet::new(), HashSet::new()),
+            (Statements(Vec::new()), vars, fns),
             |(mut statements, mut vars, mut fns), _| {
                 statements
                     .0
@@ -199,21 +211,19 @@ impl fmt::Display for Statement {
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Statement {
     fn arbitrary<G: Gen>(g: &mut G) -> Statement {
         arbitrary_statement(g, 0, &mut HashSet::new(), &mut HashSet::new())
     }
 }
 
-#[cfg(test)]
 fn arbitrary_statement<G: Gen>(
     g: &mut G,
     level: usize,
     vars: &mut HashSet<Name>,
     fns: &mut HashSet<(Name, usize)>,
 ) -> Statement {
-    let size = g.size().saturating_sub(level);
+    let size = g.size().saturating_sub(level).max(1);
     match g.gen_range(0, 2) {
         0 => {
             let var_name = Name::arbitrary(g);
@@ -226,10 +236,10 @@ fn arbitrary_statement<G: Gen>(
         }
         1 => {
             let fn_name = Name::arbitrary(g);
-            let params = (0..g.gen_range(0, size))
+            let params = (0..g.gen_range(0, size + 1))
                 .map(|_| Name::arbitrary(g))
                 .collect::<Vec<_>>();
-            // @TODO: Remove or reduce parameters not used in the expression.
+            // @TODO: Remove or reduce parameters not used in the expression?
             let statement = Statement::FnDefinition(
                 fn_name.clone(),
                 params.clone(),
@@ -298,14 +308,12 @@ impl fmt::Display for Expression {
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Expression {
     fn arbitrary<G: Gen>(g: &mut G) -> Expression {
         arbitrary_expression(g, 0, &HashSet::new(), &HashSet::new())
     }
 }
 
-#[cfg(test)]
 fn arbitrary_expression<G: Gen>(
     g: &mut G,
     level: usize,
@@ -313,6 +321,7 @@ fn arbitrary_expression<G: Gen>(
     fns: &HashSet<(Name, usize)>,
 ) -> Expression {
     let size = g.size().saturating_sub(level);
+    // Terminate expressions of sufficient depth.
     if size <= 1 {
         return Expression::Operand(arbitrary_operand(g, level + 1, vars, fns));
     }
@@ -366,14 +375,12 @@ impl fmt::Display for Operand {
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Operand {
     fn arbitrary<G: Gen>(g: &mut G) -> Operand {
         arbitrary_operand(g, 0, &HashSet::new(), &HashSet::new())
     }
 }
 
-#[cfg(test)]
 fn arbitrary_operand<G: Gen>(
     g: &mut G,
     level: usize,
@@ -381,6 +388,7 @@ fn arbitrary_operand<G: Gen>(
     fns: &HashSet<(Name, usize)>,
 ) -> Operand {
     let size = g.size().saturating_sub(level);
+    // Terminate expressions of sufficient depth.
     if size <= 1 {
         return Operand::I64(i64::arbitrary(g));
     }
@@ -426,7 +434,6 @@ impl fmt::Display for Operator {
     }
 }
 
-#[cfg(test)]
 impl Arbitrary for Operator {
     fn arbitrary<G: Gen>(g: &mut G) -> Operator {
         match g.gen_range(0, 4) {

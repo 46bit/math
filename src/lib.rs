@@ -6,9 +6,7 @@
 extern crate llvm_sys as llvm;
 #[macro_use]
 extern crate nom;
-#[cfg(test)]
 extern crate quickcheck;
-#[cfg(test)]
 extern crate rand;
 
 pub mod math;

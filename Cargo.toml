@@ -6,10 +6,6 @@ authors = ["Michael Mokrysz <hi@46b.it>"]
 [dependencies]
 # PATH="/usr/local/Cellar/llvm/5.0.1/bin:$PATH"
 llvm-sys = "50"
-
-[dependencies.nom]
-version = "3.2.1"
-
-[dev-dependencies]
+nom = "3.2.1"
 quickcheck = "0.2"
 rand = "0.3.20"
