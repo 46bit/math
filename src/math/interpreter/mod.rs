@@ -45,7 +45,7 @@ impl Interpreter {
             .extend(program.inputs.iter().cloned().zip(inputs.iter().cloned()));
 
         for statement in &program.statements.0 {
-            self.statement(statement);
+            self.statement(statement)?;
         }
 
         let mut outputs = Vec::new();
