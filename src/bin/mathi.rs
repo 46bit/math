@@ -13,7 +13,7 @@ fn main() {
     let inputs = args.map(|input| input.parse().unwrap()).collect();
 
     let outputs = math::interpret(in_.as_bytes(), &inputs).unwrap();
-    for (_, n) in outputs {
+    for n in outputs {
         println!("{}", n);
     }
 }
