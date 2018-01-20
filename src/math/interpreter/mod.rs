@@ -151,8 +151,7 @@ mod tests {
 
     fn interprets_successfully_property(program: Program) -> bool {
         let inputs: Vec<i64> = (0..program.inputs.len()).map(|n| n as i64 - 3).collect();
-        let mut i = Interpreter::new();
-        let result = i.run(&program, &inputs);
+        let result = execute(&program, &inputs);
         if let Ok(ref outputs) = result {
             assert_eq!(outputs.len(), program.outputs.len());
         }
