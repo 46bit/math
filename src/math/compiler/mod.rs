@@ -17,7 +17,9 @@ use std::ffi::{CStr, CString};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error {}
+pub enum Error {
+    Unknown,
+}
 
 pub unsafe fn compile(program: &Program, out_file: &mut File) -> Result<String, Error> {
     let (llvm_ctx, llvm_module) = synthesise(&program)?;
@@ -98,22 +100,24 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
         }
     }
 
-    // FIXME: Construct a string type, don't create an entire global string.
-    let format_string_name = llvm_name("integer_format_string");
-    let format_string = llvm_name("%d");
-    let llvm_format_string = llvm::core::LLVMBuildGlobalString(
-        llvm_builder,
-        format_string.as_ptr(),
-        format_string_name.as_ptr(),
-    );
-    let llvm_string_type = llvm::core::LLVMTypeOf(llvm_format_string);
+    let llvm_string_type = llvm::core::LLVMArrayType(llvm::core::LLVMInt8Type(), 0);
+    let llvm_strings_type = llvm::core::LLVMArrayType(llvm_string_type, 0);
     let llvm_i32_type = llvm::core::LLVMInt32TypeInContext(llvm_ctx);
+    let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(llvm_ctx);
+
     let params_types = &mut [llvm_string_type];
     let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 1, 0);
     let llvm_fn_name = llvm_name("printf");
     let llvm_printf_fn =
         llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
     llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
+
+    let params_types = &mut [llvm_strings_type, llvm_string_type, llvm_i64_type];
+    let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 1, 1);
+    let llvm_fn_name = llvm_name("sscanf");
+    let llvm_sscanf_fn =
+        llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
+    llvm_functions.insert(Name::new("sscanf"), llvm_sscanf_fn);
 
     let main_prints = &program.outputs;
     let main_assigns = program
@@ -128,7 +132,7 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
     let main_function_name = Name::new("main");
     let main_function = Function::new(
         &main_function_name,
-        None,
+        Some(&program.inputs),
         Some(main_assigns),
         Some(&main_prints),
         &Expression::Operand(Operand::I64(0)),
