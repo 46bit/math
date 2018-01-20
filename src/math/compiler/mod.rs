@@ -100,10 +100,10 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
         }
     }
 
-    let llvm_string_type = llvm::core::LLVMArrayType(llvm::core::LLVMInt8Type(), 0);
-    let llvm_strings_type = llvm::core::LLVMArrayType(llvm_string_type, 0);
+    let llvm_string_type = llvm::core::LLVMPointerType(llvm::core::LLVMInt8Type(), 0);
     let llvm_i32_type = llvm::core::LLVMInt32TypeInContext(llvm_ctx);
     let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(llvm_ctx);
+    let llvm_i64_ptr_type = llvm::core::LLVMPointerType(llvm_i64_type, 0);
 
     let params_types = &mut [llvm_string_type];
     let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 1, 0);
@@ -112,7 +112,7 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
         llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
     llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
 
-    let params_types = &mut [llvm_strings_type, llvm_string_type, llvm_i64_type];
+    let params_types = &mut [llvm_string_type, llvm_string_type, llvm_i64_ptr_type];
     let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 3, 1);
     let llvm_fn_name = llvm_name("sscanf");
     let llvm_sscanf_fn =

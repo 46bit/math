@@ -86,8 +86,8 @@ impl<'a> FunctionSynthesiser<'a> {
 
         let mut params_types: Vec<_>;
         if self.function.name == &Name("main".to_string()) {
-            let llvm_argv_type = llvm::core::LLVMArrayType(
-                llvm::core::LLVMArrayType(llvm::core::LLVMInt8Type(), 0),
+            let llvm_argv_type = llvm::core::LLVMPointerType(
+                llvm::core::LLVMPointerType(llvm::core::LLVMInt8Type(), 0),
                 0,
             );
             params_types = vec![llvm_i64_type, llvm_argv_type];
@@ -136,24 +136,23 @@ impl<'a> FunctionSynthesiser<'a> {
                 .collect();
 
             let sscanf_template_name = llvm_name("sscanf_template");
-            let sscanf_template: Vec<_> = (0..self.function.params_count()).map(|_| "%d").collect();
-            let sscanf_template = llvm_name(&sscanf_template.join(" "));
+            let sscanf_template = llvm_name("%d");
             let llvm_sscanf_template = llvm::core::LLVMBuildGlobalString(
                 self.llvm_builder,
                 sscanf_template.as_ptr(),
                 sscanf_template_name.as_ptr(),
             );
 
-            let mut sscanf_args = vec![llvm_argv_param, llvm_sscanf_template];
             for &(ref var_name, ref var) in &vars {
-                sscanf_args.push(var.synthesise_substitution(self.llvm_builder, var_name));
+                let mut sscanf_args = vec![llvm_argv_param, llvm_sscanf_template];
+                sscanf_args.push(var.synthesise_pointer(self.llvm_builder, var_name));
+                synthesise_fn_application(
+                    self.llvm_builder,
+                    &Name::new("sscanf"),
+                    sscanf_args,
+                    external_functions,
+                );
             }
-            synthesise_fn_application(
-                self.llvm_builder,
-                &Name::new("sscanf"),
-                sscanf_args,
-                external_functions,
-            );
 
             vars.into_iter().collect()
 

@@ -1,0 +1,2 @@
+inputs a;
+outputs a;

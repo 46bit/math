@@ -1,2 +1,4 @@
+inputs x;
 f(a, b) = a + b;
-i = 5;
+i = 5 * x;
+outputs i;

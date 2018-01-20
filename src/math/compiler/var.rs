@@ -35,6 +35,26 @@ impl Var {
         }
     }
 
+    pub unsafe fn synthesise_pointer(
+        &self,
+        llvm_builder: LLVMBuilderRef,
+        name: &Name,
+    ) -> LLVMValueRef {
+        match *self {
+            Var::Stack(llvm_var) => {
+                let llvm_ptr_name = llvm_name(&format!("ptr_{}", name.0));
+                llvm_var
+                // llvm::core::LLVMBuildPointerCast(
+                //     llvm_builder,
+                //     llvm_var,
+                //     llvm::core::LLVMTypeOf(llvm_var),
+                //     llvm_ptr_name.as_ptr(),
+                // )
+            }
+            Var::Register(_) => unimplemented!(),
+        }
+    }
+
     pub unsafe fn synthesise_substitution(
         &self,
         llvm_builder: LLVMBuilderRef,
