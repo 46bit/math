@@ -147,3 +147,27 @@ fn llvm_name(s: &str) -> CString {
 fn into_llvm_name(name: Name) -> CString {
     llvm_name(name.0.as_str())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    //use super::super::parser::{expression, parse, statement};
+    use rand::thread_rng;
+    use quickcheck::{QuickCheck, StdGen};
+
+    fn synthesises_successfully_property(program: Program) -> bool {
+        eprintln!("{}", program);
+        unsafe { synthesise(&program).is_ok() }
+    }
+
+    #[test]
+    fn synthesises_successfully() {
+        // QuickCheck's default size creates infeasibly vast statements, and beyond some
+        // point they stop exploring novel code paths. This does a much better job of
+        // exploring potential edgecases.
+        for size in 1..11 {
+            let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
+            qc.quickcheck(synthesises_successfully_property as fn(Program) -> bool);
+        }
+    }
+}
