@@ -4,7 +4,7 @@ pub mod compiler;
 
 use std::fmt;
 use std::fs::File;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use quickcheck::{Arbitrary, Gen};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,14 +114,14 @@ impl fmt::Display for Program {
 
 impl Arbitrary for Program {
     fn arbitrary<G: Gen>(g: &mut G) -> Program {
-        arbitrary_program(g, &mut HashSet::new(), &mut HashSet::new())
+        arbitrary_program(g, &mut HashSet::new(), &mut HashMap::new())
     }
 }
 
 fn arbitrary_program<G: Gen>(
     g: &mut G,
     mut vars: &mut HashSet<Name>,
-    fns: &mut HashSet<(Name, usize)>,
+    fns: &mut HashMap<Name, usize>,
 ) -> Program {
     let size = g.size();
     let input_len = 0..g.gen_range(0, size + 1);
@@ -162,14 +162,14 @@ impl fmt::Display for Statements {
 
 impl Arbitrary for Statements {
     fn arbitrary<G: Gen>(g: &mut G) -> Statements {
-        arbitrary_statements(g, &mut HashSet::new(), &mut HashSet::new())
+        arbitrary_statements(g, &mut HashSet::new(), &mut HashMap::new())
     }
 }
 
 fn arbitrary_statements<G: Gen>(
     g: &mut G,
     vars: &mut HashSet<Name>,
-    fns: &mut HashSet<(Name, usize)>,
+    fns: &mut HashMap<Name, usize>,
 ) -> Statements {
     let size = g.size();
     let statements_len = 0..g.gen_range(0, size + 1);
@@ -213,7 +213,7 @@ impl fmt::Display for Statement {
 
 impl Arbitrary for Statement {
     fn arbitrary<G: Gen>(g: &mut G) -> Statement {
-        arbitrary_statement(g, 0, &mut HashSet::new(), &mut HashSet::new())
+        arbitrary_statement(g, 0, &mut HashSet::new(), &mut HashMap::new())
     }
 }
 
@@ -221,7 +221,7 @@ fn arbitrary_statement<G: Gen>(
     g: &mut G,
     level: usize,
     vars: &mut HashSet<Name>,
-    fns: &mut HashSet<(Name, usize)>,
+    fns: &mut HashMap<Name, usize>,
 ) -> Statement {
     let size = g.size().saturating_sub(level).max(1);
     match g.gen_range(0, 2) {
@@ -236,16 +236,18 @@ fn arbitrary_statement<G: Gen>(
         }
         1 => {
             let fn_name = Name::arbitrary(g);
-            let params = (0..g.gen_range(0, size + 1))
+            let params: HashSet<_> = (0..g.gen_range(0, size + 1))
                 .map(|_| Name::arbitrary(g))
-                .collect::<Vec<_>>();
-            // @TODO: Remove or reduce parameters not used in the expression?
-            let statement = Statement::FnDefinition(
-                fn_name.clone(),
-                params.clone(),
-                arbitrary_expression(g, level + 1, &params.iter().cloned().collect(), fns),
-            );
-            fns.insert((fn_name, params.len()));
+                .collect();
+            let params_count = params.len();
+            // Removing any previous function by this name prevents the expression from
+            // using the previously defined function
+            fns.remove(&fn_name);
+            let expr = arbitrary_expression(g, level + 1, &params.clone(), fns);
+            // FIXME: Remove or reduce parameters not used in the expression?
+            let statement =
+                Statement::FnDefinition(fn_name.clone(), params.into_iter().collect(), expr);
+            fns.insert(fn_name, params_count);
             statement
         }
         _ => unreachable!(),
@@ -310,7 +312,7 @@ impl fmt::Display for Expression {
 
 impl Arbitrary for Expression {
     fn arbitrary<G: Gen>(g: &mut G) -> Expression {
-        arbitrary_expression(g, 0, &HashSet::new(), &HashSet::new())
+        arbitrary_expression(g, 0, &HashSet::new(), &HashMap::new())
     }
 }
 
@@ -318,7 +320,7 @@ fn arbitrary_expression<G: Gen>(
     g: &mut G,
     level: usize,
     vars: &HashSet<Name>,
-    fns: &HashSet<(Name, usize)>,
+    fns: &HashMap<Name, usize>,
 ) -> Expression {
     let size = g.size().saturating_sub(level);
     // Terminate expressions of sufficient depth.
@@ -377,7 +379,7 @@ impl fmt::Display for Operand {
 
 impl Arbitrary for Operand {
     fn arbitrary<G: Gen>(g: &mut G) -> Operand {
-        arbitrary_operand(g, 0, &HashSet::new(), &HashSet::new())
+        arbitrary_operand(g, 0, &HashSet::new(), &HashMap::new())
     }
 }
 
@@ -385,7 +387,7 @@ fn arbitrary_operand<G: Gen>(
     g: &mut G,
     level: usize,
     vars: &HashSet<Name>,
-    fns: &HashSet<(Name, usize)>,
+    fns: &HashMap<Name, usize>,
 ) -> Operand {
     let size = g.size().saturating_sub(level);
     // Terminate expressions of sufficient depth.
@@ -398,10 +400,10 @@ fn arbitrary_operand<G: Gen>(
             .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
             .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
         2 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
-            .map(|&&(ref fn_name, params_count)| {
+            .map(|&(ref fn_name, params_count)| {
                 Operand::FnApplication(
                     fn_name.clone().clone(),
-                    (0..params_count)
+                    (0..*params_count)
                         .map(|_| arbitrary_expression(g, level + 1, vars, fns))
                         .collect(),
                 )

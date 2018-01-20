@@ -1,6 +1,7 @@
 use super::*;
 use std::collections::HashMap;
 
+// FIXME: Function parameter names should all differ
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     UnknownVariable(Name),
@@ -155,6 +156,9 @@ mod tests {
         if let Ok(ref outputs) = result {
             assert_eq!(outputs.len(), program.outputs.len());
         }
+        if let Err(ref e) = result {
+            eprintln!("{:?}", e);
+        }
         result.is_ok()
     }
 
@@ -256,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn fn_params_can_reuse_external_names() {
+    fn fn_params_can_reuse_external_variable_names() {
         let mut i = Interpreter::new();
         i.statement(&statement(b"i = 1;").unwrap().1).unwrap();
         i.statement(&statement(b"f(i) = i;").unwrap().1).unwrap();
@@ -271,6 +275,22 @@ mod tests {
         i.statement(&statement(b"f(b) = b;").unwrap().1).unwrap();
         i.statement(&statement(b"j = f(a);").unwrap().1).unwrap();
         assert_eq!(i.variables[&as_name("j")], 1);
+    }
+
+    #[test]
+    fn fn_args_cannot_use_previous_fn_definition() {
+        let mut i = Interpreter::new();
+        i.statement(&statement(b"f(a) = a;").unwrap().1).unwrap();
+        i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1)
+            .unwrap();
+        assert_eq!(
+            i.statement(&statement(b"i = f(1, 2);").unwrap().1),
+            Err(Error::IncorrectArgumentCount {
+                name: as_name("f"),
+                params_count: 2,
+                provided_count: 1,
+            })
+        );
     }
 
     #[test]
