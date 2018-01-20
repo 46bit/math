@@ -151,12 +151,12 @@ fn into_llvm_name(name: Name) -> CString {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use super::super::parser::{expression, parse, statement};
+    use super::super::parser;
     use rand::thread_rng;
     use quickcheck::{QuickCheck, StdGen};
 
     fn synthesises_successfully_property(program: Program) -> bool {
-        eprintln!("{}", program);
+        eprintln!("{}\n---", program);
         unsafe { synthesise(&program).is_ok() }
     }
 
@@ -169,5 +169,23 @@ mod tests {
             let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
             qc.quickcheck(synthesises_successfully_property as fn(Program) -> bool);
         }
+    }
+
+    #[test]
+    fn can_synthesise_with_no_inputs_or_outputs() {
+        unsafe {
+            synthesise(&parse(b"inputs; outputs;")).unwrap();
+        }
+    }
+
+    #[test]
+    fn can_synthesise_inputs_into_outputs() {
+        unsafe {
+            synthesise(&parse(b"inputs a; outputs a;")).unwrap();
+        }
+    }
+
+    fn parse(s: &[u8]) -> Program {
+        parser::parse(s).unwrap()
     }
 }
