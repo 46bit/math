@@ -18,5 +18,6 @@ fn main() {
 
     let mut out_file = File::create(out_path).unwrap();
 
-    math::compile(in_.as_bytes(), &mut out_file).unwrap();
+    let ir = math::compile(in_.as_bytes(), &mut out_file).unwrap();
+    println!("{}", ir);
 }

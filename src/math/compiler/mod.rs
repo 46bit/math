@@ -113,7 +113,7 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
     llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
 
     let params_types = &mut [llvm_strings_type, llvm_string_type, llvm_i64_type];
-    let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 1, 1);
+    let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 3, 1);
     let llvm_fn_name = llvm_name("sscanf");
     let llvm_sscanf_fn =
         llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
