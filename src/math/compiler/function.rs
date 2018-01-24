@@ -119,46 +119,51 @@ impl<'a> FunctionSynthesiser<'a> {
             let llvm_argv_name = llvm_name("argv");
             llvm::core::LLVMSetValueName(llvm_argv_param, llvm_argv_name.as_ptr());
 
+            // FIXME: assert(argc >= params.len())
+
             let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(self.llvm_ctx);
 
-            let vars: Vec<_> = self.function
-                .params()
-                .map(|param_name| {
-                    (
-                        param_name.clone(),
-                        Var::synthesise_allocation(
-                            self.llvm_builder,
-                            param_name.clone(),
-                            llvm_i64_type,
-                        ),
-                    )
-                })
-                .collect();
-
-            let sscanf_template_name = llvm_name("sscanf_template");
-            let sscanf_template = llvm_name("%d");
-            let llvm_sscanf_template = llvm::core::LLVMBuildGlobalString(
-                self.llvm_builder,
-                sscanf_template.as_ptr(),
-                sscanf_template_name.as_ptr(),
-            );
-
-            for &(ref var_name, ref var) in &vars {
-                let mut sscanf_args = vec![llvm_argv_param, llvm_sscanf_template];
-                sscanf_args.push(var.synthesise_pointer(self.llvm_builder, var_name));
-                synthesise_fn_application(
+            let mut vars = HashMap::new();
+            for (i, param_name) in self.function.params().enumerate() {
+                let arg_name = llvm_name("arg");
+                let arg_idx = &mut [llvm::core::LLVMConstInt(llvm_i64_type, 1 + i as u64, 0)];
+                let arg_ptr = llvm::core::LLVMBuildGEP(
                     self.llvm_builder,
-                    &Name::new("sscanf"),
-                    sscanf_args,
-                    external_functions,
+                    llvm_argv_param,
+                    arg_idx.as_mut_ptr(),
+                    1,
+                    arg_name.as_ptr(),
                 );
+                let arg = llvm::core::LLVMBuildLoad(self.llvm_builder, arg_ptr, arg_name.as_ptr());
+
+                let tmpl_name = llvm_name("tmpl");
+                let tmpl_string = llvm_name("%lld");
+                let tmpl = llvm::core::LLVMBuildGlobalStringPtr(
+                    self.llvm_builder,
+                    tmpl_string.as_ptr(),
+                    tmpl_name.as_ptr(),
+                );
+
+                let input = Var::synthesise_allocation(
+                    self.llvm_builder,
+                    param_name.clone(),
+                    llvm_i64_type,
+                );
+
+                let call_name = llvm_name("call");
+                let args = &mut [arg, tmpl, input.synthesise_pointer()];
+                llvm::core::LLVMBuildCall(
+                    self.llvm_builder,
+                    external_functions[&Name("sscanf".to_string())],
+                    args.as_mut_ptr(),
+                    args.len() as u32,
+                    call_name.as_ptr(),
+                );
+
+                vars.insert(param_name.clone(), input);
             }
 
             vars.into_iter().collect()
-
-        // FIXME: Pseudocode for parsing argv into inputs
-        // assert(argc >= params.len())
-        // sscanf(argv, 0..params.len().map(|_| "%d").collect::<Vec<_>>().join(" "), &p0, &p1, ...)
         } else {
             self.function
                 .params()
@@ -218,7 +223,7 @@ impl<'a> FunctionSynthesiser<'a> {
     ) {
         for var_name in self.function.prints() {
             let printf_template_name = llvm_name("printf_template");
-            let printf_template = llvm_name("%d\n");
+            let printf_template = llvm_name("%lld\n");
             let llvm_printf_template = llvm::core::LLVMBuildGlobalString(
                 self.llvm_builder,
                 printf_template.as_ptr(),

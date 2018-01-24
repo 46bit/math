@@ -1,4 +1,6 @@
+inputs a, b, c;
 f() = 1 + 2;
 g(a) = a * 3;
 i = 5 * 3 + f();
-j = i + 1 + g(i);
+j = i + 1 + g(i + a / b);
+outputs a, c, i, j;
