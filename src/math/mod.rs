@@ -3,7 +3,6 @@ pub mod interpreter;
 pub mod compiler;
 
 use std::fmt;
-use std::fs::File;
 use std::collections::{HashMap, HashSet};
 use quickcheck::{Arbitrary, Gen};
 
@@ -20,9 +19,9 @@ pub fn interpret(s: &[u8], inputs: &Vec<i64>) -> Result<Vec<i64>, Error> {
     return Ok(outputs);
 }
 
-pub fn compile(s: &[u8], out_file: &mut File) -> Result<String, Error> {
+pub fn compile(s: &[u8], out_path: String) -> Result<String, Error> {
     let program = parser::parse(s).map_err(Error::ParseError)?;
-    let results = unsafe { compiler::compile(&program, out_file).map_err(Error::CompilerError)? };
+    let results = unsafe { compiler::compile(&program, out_path).map_err(Error::CompilerError)? };
     return Ok(results);
 }
 

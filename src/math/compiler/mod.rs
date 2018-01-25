@@ -15,73 +15,38 @@ use std::ptr;
 use std::slice;
 use std::ffi::{CStr, CString};
 use std::collections::HashMap;
+use std::process::Command;
+use std::thread;
+use std::time;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Unknown,
 }
 
-pub unsafe fn compile(program: &Program, out_file: &mut File) -> Result<String, Error> {
+pub unsafe fn compile(program: &Program, out_path: String) -> Result<String, Error> {
+    let (llvm_ir, object_path) = objectify(program, out_path.clone())?;
+    link(object_path, out_path);
+
+    // FIXME: Error handling.
+    return Ok(llvm_ir);
+}
+
+unsafe fn objectify(program: &Program, out_path: String) -> Result<(String, String), Error> {
     let (llvm_ctx, llvm_module) = synthesise(&program)?;
 
     let c = llvm::core::LLVMPrintModuleToString(llvm_module);
     let llvm_ir = CStr::from_ptr(c).to_string_lossy().into_owned();
     llvm::core::LLVMDisposeMessage(c);
 
-    emit(llvm_module, out_file);
-
+    let object_path = out_path.clone() + ".o";
+    let mut object_file = File::create(object_path.clone()).unwrap();
+    emit(llvm_module, &mut object_file);
+    drop(object_file);
     llvm::core::LLVMDisposeModule(llvm_module);
     llvm::core::LLVMContextDispose(llvm_ctx);
-    // FIXME: Error handling.
-    return Ok(llvm_ir);
-}
 
-unsafe fn emit<W>(llvm_module: LLVMModuleRef, mut out: W)
-where
-    W: Write,
-{
-    llvm::target::LLVM_InitializeNativeTarget();
-    llvm::target::LLVM_InitializeNativeAsmPrinter();
-    llvm::target::LLVM_InitializeNativeAsmParser();
-
-    let llvm_triple = CString::from_raw(llvm::target_machine::LLVMGetDefaultTargetTriple());
-    let mut llvm_target = mem::uninitialized();
-    assert_eq!(
-        llvm::target_machine::LLVMGetTargetFromTriple(
-            llvm_triple.as_ptr(),
-            &mut llvm_target,
-            ptr::null_mut(),
-        ),
-        0
-    );
-
-    let llvm_empty_name = llvm_name("");
-    let llvm_target_machine = llvm::target_machine::LLVMCreateTargetMachine(
-        llvm_target,
-        llvm_triple.as_ptr(),
-        llvm_empty_name.as_ptr(),
-        llvm_empty_name.as_ptr(),
-        llvm::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
-        llvm::target_machine::LLVMRelocMode::LLVMRelocDefault,
-        llvm::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
-    );
-
-    let mut llvm_mem_buf: LLVMMemoryBufferRef = mem::uninitialized();
-    llvm::target_machine::LLVMTargetMachineEmitToMemoryBuffer(
-        llvm_target_machine,
-        llvm_module,
-        llvm::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
-        ptr::null_mut(),
-        &mut llvm_mem_buf,
-    );
-
-    let llvm_out = slice::from_raw_parts(
-        llvm::core::LLVMGetBufferStart(llvm_mem_buf) as *const _,
-        llvm::core::LLVMGetBufferSize(llvm_mem_buf) as usize,
-    );
-    out.write_all(llvm_out).unwrap();
-    llvm::core::LLVMDisposeMemoryBuffer(llvm_mem_buf);
-    llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
+    Ok((llvm_ir, object_path))
 }
 
 unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMModuleRef), Error> {
@@ -142,6 +107,73 @@ unsafe fn synthesise(program: &Program) -> Result<(*mut llvm::LLVMContext, LLVMM
     llvm::core::LLVMDisposeBuilder(llvm_builder);
     // FIXME: Error handling.
     return Ok((llvm_ctx, llvm_module));
+}
+
+unsafe fn emit<W>(llvm_module: LLVMModuleRef, mut out: W)
+where
+    W: Write,
+{
+    llvm::target::LLVM_InitializeNativeTarget();
+    llvm::target::LLVM_InitializeNativeAsmPrinter();
+    llvm::target::LLVM_InitializeNativeAsmParser();
+
+    let llvm_triple = CString::from_raw(llvm::target_machine::LLVMGetDefaultTargetTriple());
+    let mut llvm_target = mem::uninitialized();
+    assert_eq!(
+        llvm::target_machine::LLVMGetTargetFromTriple(
+            llvm_triple.as_ptr(),
+            &mut llvm_target,
+            ptr::null_mut(),
+        ),
+        0
+    );
+
+    let llvm_empty_name = llvm_name("");
+    let llvm_target_machine = llvm::target_machine::LLVMCreateTargetMachine(
+        llvm_target,
+        llvm_triple.as_ptr(),
+        llvm_empty_name.as_ptr(),
+        llvm_empty_name.as_ptr(),
+        llvm::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+        llvm::target_machine::LLVMRelocMode::LLVMRelocDefault,
+        llvm::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
+    );
+
+    let mut llvm_mem_buf: LLVMMemoryBufferRef = mem::uninitialized();
+    llvm::target_machine::LLVMTargetMachineEmitToMemoryBuffer(
+        llvm_target_machine,
+        llvm_module,
+        llvm::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
+        ptr::null_mut(),
+        &mut llvm_mem_buf,
+    );
+
+    let llvm_out = slice::from_raw_parts(
+        llvm::core::LLVMGetBufferStart(llvm_mem_buf) as *const _,
+        llvm::core::LLVMGetBufferSize(llvm_mem_buf) as usize,
+    );
+    out.write_all(llvm_out).unwrap();
+    llvm::core::LLVMDisposeMemoryBuffer(llvm_mem_buf);
+    llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
+}
+
+fn link(object_path: String, out_path: String) {
+    assert!(
+        Command::new("ld")
+            .args(&[
+                "-o",
+                &out_path,
+                &object_path,
+                "-macosx_version_min",
+                "10.12",
+                "-lc",
+            ])
+            .spawn()
+            .expect("could not invoke ld for linking")
+            .wait()
+            .unwrap()
+            .success()
+    );
 }
 
 fn llvm_name(s: &str) -> CString {
