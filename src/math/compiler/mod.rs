@@ -23,12 +23,9 @@ pub enum Error {
 
 pub unsafe fn compile(program: &Program, out_path: String) -> Result<String, Error> {
     let llvm_ir = synthesise(program)?;
-    //panic!("a");
     let object_path = out_path.clone() + ".o";
     objectify(llvm_ir.clone(), object_path.clone());
-    //panic!("b");
-    link();
-    //panic!("c");
+    link(out_path, object_path);
 
     // FIXME: Error handling.
     return Ok(llvm_ir);
@@ -154,7 +151,7 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     );
     assert_ne!(llvm_target_machine, ptr::null_mut());
     //libc::free(llvm_target);
-    //panic!("b2");
+    //libc::free(llvm_triple);
 
     let mut llvm_mem_buf: LLVMMemoryBufferRef = ptr::null_mut();
     assert_eq!(
@@ -176,16 +173,13 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     object_file.write_all(llvm_out).unwrap();
     drop(object_file);
 
-    //panic!("b3");
     //let _ = CString::from_raw(object_path_name);
     llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
     llvm::core::LLVMDisposeModule(llvm_module);
     llvm::core::LLVMContextDispose(llvm_ctx);
 }
 
-fn link() {
-    let out_path = "/tmp/a.out";
-    let object_path = "/tmp/a.out.o";
+fn link(out_path: String, object_path: String) {
     assert!(
         Command::new("sh")
             .arg("-c")
@@ -196,17 +190,6 @@ fn link() {
             .unwrap()
             .success()
     );
-    //assert!(
-    //    Command::new("cc")
-    //        .arg("-o")
-    //        .arg(out_path)
-    //        .arg(object_path)
-    //        .spawn()
-    //        .expect("could not invoke cc for linking")
-    //        .wait()
-    //        .unwrap()
-    //        .success()
-    //);
 }
 
 fn llvm_name(s: &str) -> CString {
