@@ -27,7 +27,7 @@ pub unsafe fn compile(program: &Program, out_path: String) -> Result<String, Err
     let object_path = out_path.clone() + ".o";
     objectify(llvm_ir.clone(), object_path.clone());
     //panic!("b");
-    link(object_path.clone(), out_path.clone());
+    link();
     //panic!("c");
 
     // FIXME: Error handling.
@@ -183,22 +183,30 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     llvm::core::LLVMContextDispose(llvm_ctx);
 }
 
-fn link(object_path: String, out_path: String) {
-    println!("{:?}", object_path);
-    println!("{:?}", out_path);
-    let out_path = "a.out";
-    let object_path = "a.out.o";
+fn link() {
+    let out_path = "/tmp/a.out";
+    let object_path = "/tmp/a.out.o";
     assert!(
-        Command::new("cc")
-            .arg("-o")
-            .arg(out_path)
-            .arg(object_path)
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!("cc -o {} {}", out_path, object_path))
             .spawn()
             .expect("could not invoke cc for linking")
             .wait()
             .unwrap()
             .success()
     );
+    //assert!(
+    //    Command::new("cc")
+    //        .arg("-o")
+    //        .arg(out_path)
+    //        .arg(object_path)
+    //        .spawn()
+    //        .expect("could not invoke cc for linking")
+    //        .wait()
+    //        .unwrap()
+    //        .success()
+    //);
 }
 
 fn llvm_name(s: &str) -> CString {
