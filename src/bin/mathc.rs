@@ -20,6 +20,19 @@ fn main() {
     let ir = math::compile(in_.as_bytes(), out_path.clone()).unwrap();
     println!("{}", ir);
 
+    let out_path = "a.out";
+    let object_path = "a.out.o";
+    assert!(
+        Command::new("cc")
+            .arg("-o")
+            .arg(out_path)
+            .arg(object_path)
+            .spawn()
+            .expect("could not invoke cc for linking")
+            .wait()
+            .unwrap()
+            .success()
+    );
     //let object_path = out_path.clone() + ".o";
     //assert!(
     //    Command::new("ld")

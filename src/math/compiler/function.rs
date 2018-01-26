@@ -224,7 +224,7 @@ impl<'a> FunctionSynthesiser<'a> {
         for var_name in self.function.prints() {
             let printf_template_name = llvm_name("printf_template");
             let printf_template = llvm_name("%lld\n");
-            let llvm_printf_template = llvm::core::LLVMBuildGlobalString(
+            let llvm_printf_template = llvm::core::LLVMBuildGlobalStringPtr(
                 self.llvm_builder,
                 printf_template.as_ptr(),
                 printf_template_name.as_ptr(),
