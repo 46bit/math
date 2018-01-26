@@ -7,10 +7,14 @@ use self::var::*;
 use self::function::*;
 use self::expression::*;
 use llvm;
+use llvm::prelude::*;
 use std::ptr;
 use std::ffi::{CStr, CString};
 use std::collections::HashMap;
 use std::process::Command;
+use std::slice;
+use std::fs::File;
+use std::io::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -152,18 +156,26 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     //libc::free(llvm_target);
     //panic!("b2");
 
-    let object_path = object_path.clone();
-    let object_path_name = llvm_name(&object_path).into_raw();
+    let mut llvm_mem_buf: LLVMMemoryBufferRef = ptr::null_mut();
     assert_eq!(
-        llvm::target_machine::LLVMTargetMachineEmitToFile(
+        llvm::target_machine::LLVMTargetMachineEmitToMemoryBuffer(
             llvm_target_machine,
             llvm_module,
-            object_path_name,
             llvm::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
             ptr::null_mut(),
+            &mut llvm_mem_buf,
         ),
         0
     );
+    let llvm_out = slice::from_raw_parts(
+        llvm::core::LLVMGetBufferStart(llvm_mem_buf) as *const _,
+        llvm::core::LLVMGetBufferSize(llvm_mem_buf) as usize,
+    );
+
+    let mut object_file = File::create(object_path).unwrap();
+    object_file.write_all(llvm_out).unwrap();
+    drop(object_file);
+
     //panic!("b3");
     //let _ = CString::from_raw(object_path_name);
     llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
