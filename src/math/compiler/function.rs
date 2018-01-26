@@ -28,13 +28,6 @@ impl<'a> Function<'a> {
         }
     }
 
-    pub fn params_count(&self) -> u32 {
-        match self.params {
-            Some(v) => v.len() as u32,
-            None => 0,
-        }
-    }
-
     pub fn params(&'a self) -> impl Iterator<Item = &'a Name> + 'a {
         self.params.iter().flat_map(|v| v.iter())
     }

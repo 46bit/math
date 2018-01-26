@@ -8,6 +8,7 @@ use self::function::*;
 use self::expression::*;
 use llvm;
 use llvm::prelude::*;
+use libc;
 use std::ptr;
 use std::ffi::{CStr, CString};
 use std::collections::HashMap;
@@ -26,7 +27,6 @@ pub unsafe fn compile(program: &Program, out_path: String) -> Result<String, Err
     let object_path = out_path.clone() + ".o";
     objectify(llvm_ir.clone(), object_path.clone());
     link(out_path, object_path);
-
     // FIXME: Error handling.
     return Ok(llvm_ir);
 }
@@ -87,7 +87,6 @@ unsafe fn synthesise(program: &Program) -> Result<String, Error> {
     main_function.synthesise(llvm_ctx, llvm_module, llvm_builder, &llvm_functions);
 
     llvm::core::LLVMDisposeBuilder(llvm_builder);
-    // FIXME: Error handling.
 
     let llvm_ir_ptr = llvm::core::LLVMPrintModuleToString(llvm_module);
     let llvm_ir = CStr::from_ptr(llvm_ir_ptr).to_string_lossy().into_owned();
@@ -122,14 +121,13 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     if errors != ptr::null_mut() {
         println!("{}", CString::from_raw(errors).to_str().unwrap());
     }
-    //llvm::core::LLVMDisposeMemoryBuffer(llvm_ir_buffer);
 
     llvm::target::LLVM_InitializeNativeTarget();
     llvm::target::LLVM_InitializeNativeAsmPrinter();
     llvm::target::LLVM_InitializeNativeAsmParser();
 
-    let llvm_triple = CString::from_raw(llvm::target_machine::LLVMGetDefaultTargetTriple());
-    println!("{:?}", llvm_triple);
+    let llvm_triple_s = llvm::target_machine::LLVMGetDefaultTargetTriple();
+    let llvm_triple = CStr::from_ptr(llvm_triple_s);
     let mut llvm_target = ptr::null_mut();
     assert_eq!(
         llvm::target_machine::LLVMGetTargetFromTriple(
@@ -150,8 +148,6 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
         llvm::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
     );
     assert_ne!(llvm_target_machine, ptr::null_mut());
-    //libc::free(llvm_target);
-    //libc::free(llvm_triple);
 
     let mut llvm_mem_buf: LLVMMemoryBufferRef = ptr::null_mut();
     assert_eq!(
@@ -173,7 +169,8 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     object_file.write_all(llvm_out).unwrap();
     drop(object_file);
 
-    //let _ = CString::from_raw(object_path_name);
+    libc::free(llvm_triple_s as *mut libc::c_void);
+    llvm::core::LLVMDisposeMemoryBuffer(llvm_mem_buf);
     llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
     llvm::core::LLVMDisposeModule(llvm_module);
     llvm::core::LLVMContextDispose(llvm_ctx);
@@ -181,9 +178,10 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
 
 fn link(out_path: String, object_path: String) {
     assert!(
-        Command::new("sh")
-            .arg("-c")
-            .arg(format!("cc -o {} {}", out_path, object_path))
+        Command::new("cc")
+            .arg("-o")
+            .arg(out_path)
+            .arg(object_path)
             .spawn()
             .expect("could not invoke cc for linking")
             .wait()
