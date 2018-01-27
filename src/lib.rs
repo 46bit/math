@@ -9,6 +9,7 @@ extern crate llvm_sys as llvm;
 extern crate nom;
 extern crate quickcheck;
 extern crate rand;
+extern crate tempfile;
 
 pub mod math;
 

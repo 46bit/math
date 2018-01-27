@@ -19,9 +19,9 @@ pub fn interpret(s: &[u8], inputs: &Vec<i64>) -> Result<Vec<i64>, Error> {
     return Ok(outputs);
 }
 
-pub fn compile(s: &[u8], out_path: String) -> Result<String, Error> {
+pub fn compile(s: &[u8], emit: compiler::Emit) -> Result<String, Error> {
     let program = parser::parse(s).map_err(Error::ParseError)?;
-    let results = unsafe { compiler::compile(&program, out_path).map_err(Error::CompilerError)? };
+    let results = unsafe { compiler::compile(&program, emit).map_err(Error::CompilerError)? };
     return Ok(results);
 }
 

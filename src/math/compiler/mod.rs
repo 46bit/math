@@ -9,6 +9,7 @@ use self::expression::*;
 use llvm;
 use llvm::prelude::*;
 use libc;
+use tempfile::NamedTempFile;
 use std::ptr;
 use std::ffi::{CStr, CString};
 use std::collections::HashMap;
@@ -16,22 +17,41 @@ use std::process::Command;
 use std::slice;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Emit {
+    IR(Option<PathBuf>),
+    Object(PathBuf),
+    Binary(PathBuf),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Unknown,
 }
 
-pub unsafe fn compile(program: &Program, out_path: String) -> Result<String, Error> {
-    let llvm_ir = synthesise(program)?;
-    let object_path = out_path.clone() + ".o";
-    objectify(llvm_ir.clone(), object_path.clone());
-    link(out_path, object_path);
-    // FIXME: Error handling.
-    return Ok(llvm_ir);
+pub unsafe fn compile(program: &Program, emit: Emit) -> Result<String, Error> {
+    match emit {
+        Emit::IR(None) => synthesise(program, None),
+        Emit::IR(Some(pathbuf)) => synthesise(program, Some(pathbuf.as_path())),
+        Emit::Object(pathbuf) => {
+            let ir = synthesise(program, None)?;
+            objectify(&ir, pathbuf.as_path())?;
+            Ok(ir)
+        }
+        Emit::Binary(pathbuf) => {
+            let ir = synthesise(program, None)?;
+            let tempfile = NamedTempFile::new().unwrap();
+            objectify(&ir, tempfile.path())?;
+            link(tempfile.path(), pathbuf.as_path())?;
+            drop(tempfile);
+            Ok(ir)
+        }
+    }
 }
 
-unsafe fn synthesise(program: &Program) -> Result<String, Error> {
+unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String, Error> {
     let llvm_ctx = llvm::core::LLVMContextCreate();
     let llvm_module = llvm::core::LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
     let llvm_builder = llvm::core::LLVMCreateBuilderInContext(llvm_ctx);
@@ -94,12 +114,18 @@ unsafe fn synthesise(program: &Program) -> Result<String, Error> {
 
     llvm::core::LLVMDisposeModule(llvm_module);
     llvm::core::LLVMContextDispose(llvm_ctx);
+
+    if let Some(path) = ir_path {
+        let mut f = File::create(path).unwrap();
+        f.write_all(llvm_ir.as_bytes()).unwrap();
+        drop(f);
+    }
     Ok(llvm_ir)
 }
 
-unsafe fn objectify(llvm_ir: String, object_path: String) {
+unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
     let llvm_ctx = llvm::core::LLVMContextCreate();
-    let llvm_ir_str = llvm_name(&llvm_ir);
+    let llvm_ir_str = llvm_name(llvm_ir);
     let llvm_ir_buffer_name = llvm_name("llvm_ir_buffer");
     let llvm_ir_buffer = llvm::core::LLVMCreateMemoryBufferWithMemoryRange(
         llvm_ir_str.as_ptr(),
@@ -174,13 +200,15 @@ unsafe fn objectify(llvm_ir: String, object_path: String) {
     llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
     llvm::core::LLVMDisposeModule(llvm_module);
     llvm::core::LLVMContextDispose(llvm_ctx);
+
+    Ok(())
 }
 
-fn link(out_path: String, object_path: String) {
+fn link(object_path: &Path, binary_path: &Path) -> Result<(), Error> {
     assert!(
         Command::new("cc")
             .arg("-o")
-            .arg(out_path)
+            .arg(binary_path)
             .arg(object_path)
             .spawn()
             .expect("could not invoke cc for linking")
@@ -188,6 +216,7 @@ fn link(out_path: String, object_path: String) {
             .unwrap()
             .success()
     );
+    Ok(())
 }
 
 fn llvm_name(s: &str) -> CString {

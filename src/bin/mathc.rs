@@ -16,6 +16,9 @@ fn main() {
     let mut in_ = String::new();
     in_file.read_to_string(&mut in_).unwrap();
 
-    let ir = math::compile(in_.as_bytes(), out_path.clone()).unwrap();
+    let ir = math::compile(
+        in_.as_bytes(),
+        math::compiler::Emit::Binary(out_path.into()),
+    ).unwrap();
     println!("{}", ir);
 }
