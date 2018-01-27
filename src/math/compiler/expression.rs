@@ -6,8 +6,8 @@ use std::collections::HashMap;
 pub struct ExpressionSynthesiser<'a> {
     llvm_ctx: LLVMContextRef,
     llvm_builder: LLVMBuilderRef,
-    vars: &'a HashMap<Name, Var>,
-    fns: &'a HashMap<Name, LLVMValueRef>,
+    vars: &'a HashMap<String, Var>,
+    fns: &'a HashMap<String, LLVMValueRef>,
 }
 
 impl<'a> ExpressionSynthesiser<'a> {
@@ -15,8 +15,8 @@ impl<'a> ExpressionSynthesiser<'a> {
         llvm_ctx: LLVMContextRef,
         llvm_builder: LLVMBuilderRef,
         expression: &Expression,
-        vars: &'a HashMap<Name, Var>,
-        fns: &HashMap<Name, LLVMValueRef>,
+        vars: &'a HashMap<String, Var>,
+        fns: &HashMap<String, LLVMValueRef>,
     ) -> LLVMValueRef {
         ExpressionSynthesiser {
             llvm_ctx: llvm_ctx,
@@ -69,7 +69,7 @@ impl<'a> ExpressionSynthesiser<'a> {
             &Operand::I64(n) => llvm::core::LLVMConstInt(i64_type, n as u64, 0),
             &Operand::Group(ref expression) => self.synthesise_expression(expression),
             &Operand::VarSubstitution(ref name) => {
-                self.vars[name].synthesise_substitution(self.llvm_builder, name)
+                self.vars[&name.0].synthesise_substitution(self.llvm_builder, name)
             }
             &Operand::FnApplication(ref name, ref args) => synthesise_fn_application(
                 self.llvm_builder,

@@ -1,13 +1,23 @@
 mod function;
 mod expression;
 mod var;
+mod func;
+mod operations;
+mod program;
 
 use super::*;
 use self::var::*;
 use self::function::*;
 use self::expression::*;
+use self::func::*;
+use self::operations::*;
+use self::program::*;
 use llvm;
 use llvm::prelude::*;
+use llvm::core::{LLVMAddFunction, LLVMContextCreate, LLVMContextDispose,
+                 LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeMessage,
+                 LLVMDisposeModule, LLVMFunctionType, LLVMInt32TypeInContext,
+                 LLVMInt64TypeInContext, LLVMInt8Type, LLVMModuleCreateWithName, LLVMPointerType};
 use libc;
 use tempfile::NamedTempFile;
 use std::ptr;
@@ -52,75 +62,100 @@ pub unsafe fn compile(program: &Program, emit: Emit) -> Result<String, Error> {
 }
 
 unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String, Error> {
-    let llvm_ctx = llvm::core::LLVMContextCreate();
-    let llvm_module = llvm::core::LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
-    let llvm_builder = llvm::core::LLVMCreateBuilderInContext(llvm_ctx);
+    let ctx = LLVMContextCreate();
+    let module = LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
+    let builder = LLVMCreateBuilderInContext(ctx);
 
-    let mut llvm_functions = HashMap::new();
+    let i32_type = LLVMInt32TypeInContext(ctx);
+    let i64_type = LLVMInt64TypeInContext(ctx);
+    let i64_ptr_type = LLVMPointerType(i64_type, 0);
+    let string_type = LLVMPointerType(LLVMInt8Type(), 0);
 
+    let fn_name = llvm_name("sscanf");
+    let param_types = &mut [string_type, string_type, i64_ptr_type];
+    let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 3, 1);
+    LLVMAddFunction(module, fn_name.as_ptr(), fn_type);
+
+    let fn_name = llvm_name("printf");
+    let param_types = &mut [string_type, i64_type];
+    let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 2, 1);
+    LLVMAddFunction(module, fn_name.as_ptr(), fn_type);
+
+    let input_function = llvm_input(
+        ctx,
+        module,
+        builder,
+        program.inputs.iter().map(|i| i.0.clone()).collect(),
+    );
+    let output_function = llvm_output(
+        ctx,
+        module,
+        builder,
+        program.outputs.iter().map(|i| i.0.clone()).collect(),
+    );
+
+    let mut assigns = vec![];
+    let mut functions = HashMap::new();
     for statement in &program.statements.0 {
-        if let &Statement::FnDefinition(ref name, ref params, ref expr) = statement {
-            let function = Function::new(name, Some(params), None, None, expr);
-            let llvm_function =
-                function.synthesise(llvm_ctx, llvm_module, llvm_builder, &llvm_functions);
-            llvm_functions.insert(name.clone(), llvm_function);
+        match statement {
+            &Statement::FnDefinition(ref name, ref params, ref expr) => {
+                let function = Function::new(name, Some(params), None, None, expr).synthesise(
+                    ctx,
+                    module,
+                    builder,
+                    &functions,
+                );
+                functions.insert(name.0.clone(), function);
+            }
+            &Statement::VarAssignment(ref name, ref expression) => {
+                assigns.push((name.0.clone(), expression.clone()));
+            }
         }
     }
 
-    let llvm_string_type = llvm::core::LLVMPointerType(llvm::core::LLVMInt8Type(), 0);
-    let llvm_i32_type = llvm::core::LLVMInt32TypeInContext(llvm_ctx);
-    let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(llvm_ctx);
-    let llvm_i64_ptr_type = llvm::core::LLVMPointerType(llvm_i64_type, 0);
-
-    let params_types = &mut [llvm_string_type, llvm_i64_type];
-    let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 2, 1);
-    let llvm_fn_name = llvm_name("printf");
-    let llvm_printf_fn =
-        llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
-    llvm_functions.insert(Name::new("printf"), llvm_printf_fn);
-
-    let params_types = &mut [llvm_string_type, llvm_string_type, llvm_i64_ptr_type];
-    let llvm_fn_type = llvm::core::LLVMFunctionType(llvm_i32_type, params_types.as_mut_ptr(), 3, 1);
-    let llvm_fn_name = llvm_name("sscanf");
-    let llvm_sscanf_fn =
-        llvm::core::LLVMAddFunction(llvm_module, llvm_fn_name.as_ptr(), llvm_fn_type);
-    llvm_functions.insert(Name::new("sscanf"), llvm_sscanf_fn);
-
-    let main_prints = &program.outputs;
-    let main_assigns = program
-        .statements
-        .0
+    let mut input_positions: HashMap<String, usize> = HashMap::new();
+    let mut params: Vec<Param> = program
+        .inputs
         .iter()
-        .filter_map(|statement| match statement {
-            &Statement::VarAssignment(ref name, ref expr) => Some((name, expr)),
-            _ => None,
-        })
+        .map(|input_name| Param::Input(input_name.0.clone()))
         .collect();
-    let main_function_name = Name::new("main");
-    let main_function = Function::new(
-        &main_function_name,
-        Some(&program.inputs),
-        Some(main_assigns),
-        Some(&main_prints),
-        &Expression::Operand(Operand::I64(0)),
+    for (i, input_name) in program.inputs.iter().enumerate() {
+        input_positions.insert(input_name.0.clone(), i);
+    }
+    for output_name in &program.outputs {
+        if let Some(i) = input_positions.get(&output_name.0) {
+            params[*i] = Param::InputAndOutput(output_name.0.clone());
+        } else {
+            params.push(Param::Output(output_name.0.clone()));
+        }
+    }
+    let run_function = llvm_run(ctx, module, builder, params.clone(), assigns, &functions);
+
+    llvm_main(
+        ctx,
+        module,
+        builder,
+        params,
+        input_function,
+        run_function,
+        output_function,
+        program.inputs.len() as u64,
     );
-    main_function.synthesise(llvm_ctx, llvm_module, llvm_builder, &llvm_functions);
 
-    llvm::core::LLVMDisposeBuilder(llvm_builder);
-
-    let llvm_ir_ptr = llvm::core::LLVMPrintModuleToString(llvm_module);
-    let llvm_ir = CStr::from_ptr(llvm_ir_ptr).to_string_lossy().into_owned();
-    llvm::core::LLVMDisposeMessage(llvm_ir_ptr);
-
-    llvm::core::LLVMDisposeModule(llvm_module);
-    llvm::core::LLVMContextDispose(llvm_ctx);
+    LLVMDisposeBuilder(builder);
+    let ir_ptr = llvm::core::LLVMPrintModuleToString(module);
+    let ir = CStr::from_ptr(ir_ptr).to_string_lossy().into_owned();
+    LLVMDisposeMessage(ir_ptr);
+    LLVMDisposeModule(module);
+    LLVMContextDispose(ctx);
+    println!("{}", ir);
 
     if let Some(path) = ir_path {
         let mut f = File::create(path).unwrap();
-        f.write_all(llvm_ir.as_bytes()).unwrap();
+        f.write_all(ir.as_bytes()).unwrap();
         drop(f);
     }
-    Ok(llvm_ir)
+    Ok(ir)
 }
 
 unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
@@ -135,18 +170,16 @@ unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
     );
     let mut llvm_module = ptr::null_mut();
     let mut errors = ptr::null_mut();
-    assert_eq!(
-        llvm::ir_reader::LLVMParseIRInContext(
-            llvm_ctx,
-            llvm_ir_buffer,
-            &mut llvm_module,
-            &mut errors,
-        ),
-        0
+    let return_code = llvm::ir_reader::LLVMParseIRInContext(
+        llvm_ctx,
+        llvm_ir_buffer,
+        &mut llvm_module,
+        &mut errors,
     );
     if errors != ptr::null_mut() {
         println!("{}", CString::from_raw(errors).to_str().unwrap());
     }
+    assert_eq!(return_code, 0);
 
     llvm::target::LLVM_InitializeNativeTarget();
     llvm::target::LLVM_InitializeNativeAsmPrinter();

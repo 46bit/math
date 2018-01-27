@@ -3,6 +3,45 @@ use llvm;
 use llvm::prelude::*;
 
 #[derive(Debug, Clone)]
+pub enum Param {
+    Input(String),
+    Output(String),
+    InputAndOutput(String),
+}
+
+impl Param {
+    pub fn name(&self) -> &String {
+        match self {
+            &Param::Input(ref name)
+            | &Param::Output(ref name)
+            | &Param::InputAndOutput(ref name) => name,
+        }
+    }
+
+    pub fn llvm_name(&self) -> CString {
+        match self {
+            &Param::Input(ref name)
+            | &Param::Output(ref name)
+            | &Param::InputAndOutput(ref name) => llvm_name(name),
+        }
+    }
+
+    pub fn pre_initialised(&self) -> bool {
+        match self {
+            &Param::Input(_) | &Param::InputAndOutput(_) => true,
+            &Param::Output(_) => false,
+        }
+    }
+
+    pub fn outputted(&self) -> bool {
+        match self {
+            &Param::Output(_) | &Param::InputAndOutput(_) => true,
+            &Param::Input(_) => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Var {
     Register(LLVMValueRef),
     Stack(LLVMValueRef),

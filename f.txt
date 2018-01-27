@@ -1,0 +1,3 @@
+inputs a;
+b = a * 5;
+outputs b;

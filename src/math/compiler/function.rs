@@ -45,7 +45,7 @@ impl<'a> Function<'a> {
         llvm_ctx: LLVMContextRef,
         llvm_module: *mut llvm::LLVMModule,
         llvm_builder: LLVMBuilderRef,
-        external_functions: &HashMap<Name, LLVMValueRef>,
+        external_functions: &HashMap<String, LLVMValueRef>,
     ) -> LLVMValueRef {
         FunctionSynthesiser {
             function: &self,
@@ -64,7 +64,10 @@ struct FunctionSynthesiser<'a> {
 }
 
 impl<'a> FunctionSynthesiser<'a> {
-    unsafe fn synthesise(&self, external_functions: &HashMap<Name, LLVMValueRef>) -> LLVMValueRef {
+    unsafe fn synthesise(
+        &self,
+        external_functions: &HashMap<String, LLVMValueRef>,
+    ) -> LLVMValueRef {
         let llvm_fn = self.synthesise_fn();
         self.synthesise_entry(llvm_fn);
         let mut vars = self.synthesise_params(llvm_fn, external_functions);
@@ -101,7 +104,7 @@ impl<'a> FunctionSynthesiser<'a> {
     unsafe fn synthesise_params(
         &self,
         llvm_fn: LLVMValueRef,
-        external_functions: &HashMap<Name, LLVMValueRef>,
+        external_functions: &HashMap<String, LLVMValueRef>,
     ) -> HashMap<Name, Var> {
         if self.function.name == &Name("main".to_string()) {
             let llvm_argc_param = llvm::core::LLVMGetParam(llvm_fn, 0);
@@ -147,7 +150,7 @@ impl<'a> FunctionSynthesiser<'a> {
                 let args = &mut [arg, tmpl, input.synthesise_pointer()];
                 llvm::core::LLVMBuildCall(
                     self.llvm_builder,
-                    external_functions[&Name("sscanf".to_string())],
+                    external_functions[&"sscanf".to_string()],
                     args.as_mut_ptr(),
                     args.len() as u32,
                     call_name.as_ptr(),
@@ -184,7 +187,7 @@ impl<'a> FunctionSynthesiser<'a> {
     unsafe fn synthesise_assignments(
         &self,
         vars: &mut HashMap<Name, Var>,
-        external_functions: &HashMap<Name, LLVMValueRef>,
+        external_functions: &HashMap<String, LLVMValueRef>,
     ) {
         let llvm_i64_type = llvm::core::LLVMInt64TypeInContext(self.llvm_ctx);
         for (var_name, _) in self.function.assigns() {
@@ -202,7 +205,7 @@ impl<'a> FunctionSynthesiser<'a> {
                     self.llvm_ctx,
                     self.llvm_builder,
                     var_expression,
-                    &vars,
+                    &vars.iter().map(|(n, v)| (n.0.clone(), v.clone())).collect(),
                     &external_functions,
                 ),
             );
@@ -212,7 +215,7 @@ impl<'a> FunctionSynthesiser<'a> {
     unsafe fn synthesise_prints(
         &self,
         vars: &mut HashMap<Name, Var>,
-        external_functions: &HashMap<Name, LLVMValueRef>,
+        external_functions: &HashMap<String, LLVMValueRef>,
     ) {
         for var_name in self.function.prints() {
             let printf_template_name = llvm_name("printf_template");
@@ -235,8 +238,8 @@ impl<'a> FunctionSynthesiser<'a> {
 
     unsafe fn synthesise_return(
         &self,
-        mut vars: &mut HashMap<Name, Var>,
-        external_functions: &HashMap<Name, LLVMValueRef>,
+        vars: &HashMap<Name, Var>,
+        external_functions: &HashMap<String, LLVMValueRef>,
     ) {
         llvm::core::LLVMBuildRet(
             self.llvm_builder,
@@ -244,7 +247,7 @@ impl<'a> FunctionSynthesiser<'a> {
                 self.llvm_ctx,
                 self.llvm_builder,
                 self.function.returns,
-                &mut vars,
+                &vars.iter().map(|(n, v)| (n.0.clone(), v.clone())).collect(),
                 external_functions,
             ),
         );
@@ -255,9 +258,9 @@ pub unsafe fn synthesise_fn_application(
     llvm_builder: LLVMBuilderRef,
     name: &Name,
     mut llvm_args: Vec<LLVMValueRef>,
-    fns: &HashMap<Name, LLVMValueRef>,
+    fns: &HashMap<String, LLVMValueRef>,
 ) -> LLVMValueRef {
-    let llvm_function = fns.get(name).unwrap();
+    let llvm_function = fns.get(&name.0).unwrap();
     let llvm_fn_name = into_llvm_name(name.clone());
     let llvm_args_slice = llvm_args.as_mut_slice();
     llvm::core::LLVMBuildCall(
