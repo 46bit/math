@@ -1,8 +1,7 @@
 use super::*;
 use std::ffi::CString;
 use llvm::prelude::*;
-use llvm::core::{LLVMBuildCall, LLVMBuildGEP, LLVMBuildGlobalStringPtr, LLVMBuildLoad,
-                 LLVMConstInt, LLVMGetNamedFunction, LLVMInt64TypeInContext};
+use llvm::core::*;
 
 pub unsafe fn llvm_global_string_ptr(
     builder: LLVMBuilderRef,
@@ -22,6 +21,14 @@ pub unsafe fn llvm_getelement(
     let i64_type = LLVMInt64TypeInContext(ctx);
     let index = &mut [LLVMConstInt(i64_type, index, 0)];
     LLVMBuildGEP(builder, array, index.as_mut_ptr(), 1, name.as_ptr())
+}
+
+pub unsafe fn llvm_allocate(
+    builder: LLVMBuilderRef,
+    t: LLVMTypeRef,
+    name: CString,
+) -> LLVMValueRef {
+    LLVMBuildAlloca(builder, t, name.as_ptr())
 }
 
 pub unsafe fn llvm_load(

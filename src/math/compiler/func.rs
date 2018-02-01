@@ -1,8 +1,7 @@
 use super::*;
 use std::ffi::CString;
 use llvm::prelude::*;
-use llvm::core::{LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildRet, LLVMFunctionType,
-                 LLVMGetParam, LLVMPositionBuilderAtEnd, LLVMSetValueName};
+use llvm::core::*;
 
 pub unsafe fn llvm_function_definition(
     module: LLVMModuleRef,

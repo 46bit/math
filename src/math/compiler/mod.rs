@@ -14,10 +14,7 @@ use self::operations::*;
 use self::program::*;
 use llvm;
 use llvm::prelude::*;
-use llvm::core::{LLVMAddFunction, LLVMContextCreate, LLVMContextDispose,
-                 LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeMessage,
-                 LLVMDisposeModule, LLVMFunctionType, LLVMInt32TypeInContext,
-                 LLVMInt64TypeInContext, LLVMInt8Type, LLVMModuleCreateWithName, LLVMPointerType};
+use llvm::core::*;
 use libc;
 use tempfile::NamedTempFile;
 use std::ptr;
@@ -133,7 +130,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     );
 
     LLVMDisposeBuilder(builder);
-    let ir_ptr = llvm::core::LLVMPrintModuleToString(module);
+    let ir_ptr = LLVMPrintModuleToString(module);
     let ir = CStr::from_ptr(ir_ptr).to_string_lossy().into_owned();
     LLVMDisposeMessage(ir_ptr);
     LLVMDisposeModule(module);
@@ -148,10 +145,10 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
 }
 
 unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
-    let llvm_ctx = llvm::core::LLVMContextCreate();
+    let llvm_ctx = LLVMContextCreate();
     let llvm_ir_str = llvm_name(llvm_ir);
     let llvm_ir_buffer_name = llvm_name("llvm_ir_buffer");
-    let llvm_ir_buffer = llvm::core::LLVMCreateMemoryBufferWithMemoryRange(
+    let llvm_ir_buffer = LLVMCreateMemoryBufferWithMemoryRange(
         llvm_ir_str.as_ptr(),
         llvm_ir_str.as_bytes().len(),
         llvm_ir_buffer_name.as_ptr(),
@@ -209,8 +206,8 @@ unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
         0
     );
     let llvm_out = slice::from_raw_parts(
-        llvm::core::LLVMGetBufferStart(llvm_mem_buf) as *const _,
-        llvm::core::LLVMGetBufferSize(llvm_mem_buf) as usize,
+        LLVMGetBufferStart(llvm_mem_buf) as *const _,
+        LLVMGetBufferSize(llvm_mem_buf) as usize,
     );
 
     let mut object_file = File::create(object_path).unwrap();
@@ -218,10 +215,10 @@ unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
     drop(object_file);
 
     libc::free(llvm_triple_s as *mut libc::c_void);
-    llvm::core::LLVMDisposeMemoryBuffer(llvm_mem_buf);
+    LLVMDisposeMemoryBuffer(llvm_mem_buf);
     llvm::target_machine::LLVMDisposeTargetMachine(llvm_target_machine);
-    llvm::core::LLVMDisposeModule(llvm_module);
-    llvm::core::LLVMContextDispose(llvm_ctx);
+    LLVMDisposeModule(llvm_module);
+    LLVMContextDispose(llvm_ctx);
 
     Ok(())
 }

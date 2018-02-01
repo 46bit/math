@@ -1,9 +1,7 @@
 use super::*;
 use llvm::prelude::*;
 use llvm::LLVMIntPredicate;
-use llvm::core::{LLVMAppendBasicBlockInContext, LLVMBuildAlloca, LLVMBuildCondBr, LLVMBuildICmp,
-                 LLVMBuildRetVoid, LLVMBuildStore, LLVMBuildSub, LLVMConstInt, LLVMGetParam,
-                 LLVMPositionBuilderAtEnd, LLVMVoidTypeInContext};
+use llvm::core::*;
 
 pub unsafe fn llvm_input(
     ctx: LLVMContextRef,
@@ -210,7 +208,6 @@ pub unsafe fn llvm_main(
         LLVMBuildSub(builder, argc, LLVMConstInt(i64_type, 1, 0), name.as_ptr()),
         llvm_name("args_cmp_printf"),
     );
-
     llvm_function_return(builder, LLVMConstInt(i64_type, 1, 0));
 
     LLVMPositionBuilderAtEnd(builder, then_block);
@@ -218,42 +215,32 @@ pub unsafe fn llvm_main(
     for param in &params {
         if param.pre_initialised() {
             let var_name = llvm_name(&format!("{}_ptr", param.name().0));
-            let var = llvm::core::LLVMBuildAlloca(builder, i64_type, var_name.as_ptr());
+            let var = llvm_allocate(builder, i64_type, var_name);
             vars.insert(param.name().clone(), var);
         }
     }
-
     let mut input_args = vec![argc, argv];
     for param in &params {
         if param.pre_initialised() {
             input_args.push(vars[param.name()]);
         }
     }
-    llvm_call(
-        builder,
-        input_function,
-        input_args.as_mut_slice(),
-        llvm_name(""),
-    );
+    let input_args = input_args.as_mut_slice();
+    llvm_call(builder, input_function, input_args, llvm_name(""));
 
     for param in &params {
         if !param.pre_initialised() {
             let var_name = llvm_name(&format!("{}_ptr", param.name().0));
-            let var = llvm::core::LLVMBuildAlloca(builder, i64_type, var_name.as_ptr());
+            let var = llvm_allocate(builder, i64_type, var_name);
             vars.insert(param.name().clone(), var);
         }
     }
-
     let mut run_args = vec![];
     for param in &params {
         run_args.push(vars[param.name()]);
     }
-    llvm_call(
-        builder,
-        run_function,
-        run_args.as_mut_slice(),
-        llvm_name(""),
-    );
+    let run_args = run_args.as_mut_slice();
+    llvm_call(builder, run_function, run_args, llvm_name(""));
 
     let mut output_args = vec![];
     for param in &params {
@@ -261,12 +248,8 @@ pub unsafe fn llvm_main(
             output_args.push(vars[param.name()]);
         }
     }
-    llvm_call(
-        builder,
-        output_function,
-        output_args.as_mut_slice(),
-        llvm_name(""),
-    );
+    let output_args = output_args.as_mut_slice();
+    llvm_call(builder, output_function, output_args, llvm_name(""));
 
     llvm_function_return(builder, LLVMConstInt(i64_type, 0, 0));
     function

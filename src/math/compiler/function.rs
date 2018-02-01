@@ -1,7 +1,6 @@
 use super::*;
-use llvm;
 use llvm::prelude::*;
-use llvm::core::{LLVMBuildCall, LLVMBuildRet, LLVMInt64TypeInContext};
+use llvm::core::*;
 use std::iter;
 use std::collections::HashMap;
 

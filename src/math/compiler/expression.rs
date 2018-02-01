@@ -1,7 +1,6 @@
 use super::*;
 use llvm::prelude::*;
-use llvm::core::{LLVMBuildAdd, LLVMBuildLoad, LLVMBuildMul, LLVMBuildSDiv, LLVMBuildSub,
-                 LLVMConstInt, LLVMInt64TypeInContext, LLVMPointerType, LLVMTypeOf};
+use llvm::core::*;
 use std::collections::HashMap;
 
 pub struct ExpressionSynthesiser<'a> {
