@@ -1,12 +1,12 @@
 mod function;
 mod expression;
-mod var;
+mod param;
 mod func;
 mod operations;
 mod program;
 
 use super::*;
-use self::var::*;
+use self::param::*;
 use self::function::*;
 use self::expression::*;
 use self::func::*;
@@ -81,18 +81,8 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 2, 1);
     LLVMAddFunction(module, fn_name.as_ptr(), fn_type);
 
-    let input_function = llvm_input(
-        ctx,
-        module,
-        builder,
-        program.inputs.iter().map(|i| i.0.clone()).collect(),
-    );
-    let output_function = llvm_output(
-        ctx,
-        module,
-        builder,
-        program.outputs.iter().map(|i| i.0.clone()).collect(),
-    );
+    let input_function = llvm_input(ctx, module, builder, program.inputs.clone());
+    let output_function = llvm_output(ctx, module, builder, program.outputs.clone());
 
     let mut assigns = vec![];
     let mut functions = HashMap::new();
@@ -105,28 +95,28 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
                     builder,
                     &functions,
                 );
-                functions.insert(name.0.clone(), function);
+                functions.insert(name.clone(), function);
             }
             &Statement::VarAssignment(ref name, ref expression) => {
-                assigns.push((name.0.clone(), expression.clone()));
+                assigns.push((name.clone(), expression.clone()));
             }
         }
     }
 
-    let mut input_positions: HashMap<String, usize> = HashMap::new();
+    let mut input_positions: HashMap<Name, usize> = HashMap::new();
     let mut params: Vec<Param> = program
         .inputs
         .iter()
-        .map(|input_name| Param::Input(input_name.0.clone()))
+        .map(|input_name| Param::Input(input_name.clone()))
         .collect();
     for (i, input_name) in program.inputs.iter().enumerate() {
-        input_positions.insert(input_name.0.clone(), i);
+        input_positions.insert(input_name.clone(), i);
     }
     for output_name in &program.outputs {
-        if let Some(i) = input_positions.get(&output_name.0) {
-            params[*i] = Param::InputAndOutput(output_name.0.clone());
+        if let Some(i) = input_positions.get(&output_name) {
+            params[*i] = Param::InputAndOutput(output_name.clone());
         } else {
-            params.push(Param::Output(output_name.0.clone()));
+            params.push(Param::Output(output_name.clone()));
         }
     }
     let run_function = llvm_run(ctx, module, builder, params.clone(), assigns, &functions);
@@ -148,7 +138,6 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     LLVMDisposeMessage(ir_ptr);
     LLVMDisposeModule(module);
     LLVMContextDispose(ctx);
-    println!("{}", ir);
 
     if let Some(path) = ir_path {
         let mut f = File::create(path).unwrap();

@@ -1,13 +1,14 @@
 use super::*;
-use llvm;
 use llvm::prelude::*;
+use llvm::core::{LLVMBuildAdd, LLVMBuildLoad, LLVMBuildMul, LLVMBuildSDiv, LLVMBuildSub,
+                 LLVMConstInt, LLVMInt64TypeInContext, LLVMPointerType, LLVMTypeOf};
 use std::collections::HashMap;
 
 pub struct ExpressionSynthesiser<'a> {
     llvm_ctx: LLVMContextRef,
     llvm_builder: LLVMBuilderRef,
-    vars: &'a HashMap<String, Var>,
-    fns: &'a HashMap<String, LLVMValueRef>,
+    vars: &'a HashMap<Name, LLVMValueRef>,
+    fns: &'a HashMap<Name, LLVMValueRef>,
 }
 
 impl<'a> ExpressionSynthesiser<'a> {
@@ -15,8 +16,8 @@ impl<'a> ExpressionSynthesiser<'a> {
         llvm_ctx: LLVMContextRef,
         llvm_builder: LLVMBuilderRef,
         expression: &Expression,
-        vars: &'a HashMap<String, Var>,
-        fns: &HashMap<String, LLVMValueRef>,
+        vars: &'a HashMap<Name, LLVMValueRef>,
+        fns: &HashMap<Name, LLVMValueRef>,
     ) -> LLVMValueRef {
         ExpressionSynthesiser {
             llvm_ctx: llvm_ctx,
@@ -46,30 +47,40 @@ impl<'a> ExpressionSynthesiser<'a> {
         match operator {
             Operator::Subtract => {
                 let llvm_name = llvm_name("tmp_sub");
-                llvm::core::LLVMBuildSub(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                LLVMBuildSub(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
             }
             Operator::Add => {
                 let llvm_name = llvm_name("tmp_add");
-                llvm::core::LLVMBuildAdd(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                LLVMBuildAdd(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
             }
             Operator::Divide => {
                 let llvm_name = llvm_name("tmp_div");
-                llvm::core::LLVMBuildSDiv(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                LLVMBuildSDiv(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
             }
             Operator::Multiply => {
                 let llvm_name = llvm_name("tmp_mul");
-                llvm::core::LLVMBuildMul(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                LLVMBuildMul(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
             }
         }
     }
 
     unsafe fn synthesise_operand(&self, operand: &Operand) -> LLVMValueRef {
-        let i64_type = llvm::core::LLVMInt64TypeInContext(self.llvm_ctx);
+        let i64_type = LLVMInt64TypeInContext(self.llvm_ctx);
+        let i64_ptr_type = LLVMPointerType(i64_type, 0);
         match operand {
-            &Operand::I64(n) => llvm::core::LLVMConstInt(i64_type, n as u64, 0),
+            &Operand::I64(n) => LLVMConstInt(i64_type, n as u64, 0),
             &Operand::Group(ref expression) => self.synthesise_expression(expression),
             &Operand::VarSubstitution(ref name) => {
-                self.vars[&name.0].synthesise_substitution(self.llvm_builder, name)
+                let var = self.vars[&name];
+                let var_type = LLVMTypeOf(var);
+                if var_type == i64_type {
+                    var
+                } else if var_type == i64_ptr_type {
+                    let llvm_name = into_llvm_name(name.clone());
+                    LLVMBuildLoad(self.llvm_builder, var, llvm_name.as_ptr())
+                } else {
+                    unimplemented!();
+                }
             }
             &Operand::FnApplication(ref name, ref args) => synthesise_fn_application(
                 self.llvm_builder,

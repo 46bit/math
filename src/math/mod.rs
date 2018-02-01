@@ -3,6 +3,7 @@ pub mod interpreter;
 pub mod compiler;
 
 use std::fmt;
+use std::ffi::CString;
 use std::collections::{HashMap, HashSet};
 use quickcheck::{Arbitrary, Gen};
 
@@ -31,6 +32,10 @@ pub struct Name(pub String);
 impl Name {
     pub fn new(s: &str) -> Name {
         Name(s.to_string())
+    }
+
+    pub fn cstring(self) -> CString {
+        CString::new(self.0).unwrap()
     }
 }
 

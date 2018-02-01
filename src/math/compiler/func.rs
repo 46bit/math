@@ -1,3 +1,4 @@
+use super::*;
 use std::ffi::CString;
 use llvm::prelude::*;
 use llvm::core::{LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildRet, LLVMFunctionType,
@@ -6,9 +7,9 @@ use llvm::core::{LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildRet, L
 pub unsafe fn llvm_function_definition(
     module: LLVMModuleRef,
     name: CString,
-    params: Vec<(CString, LLVMTypeRef)>,
+    params: Vec<(Name, LLVMTypeRef)>,
     return_type: LLVMTypeRef,
-) -> LLVMValueRef {
+) -> (LLVMValueRef, HashMap<Name, LLVMValueRef>) {
     let mut param_types: Vec<_> = params.iter().map(|&(_, param_type)| param_type).collect();
     let function = LLVMAddFunction(
         module,
@@ -20,11 +21,14 @@ pub unsafe fn llvm_function_definition(
             0,
         ),
     );
+    let mut param_values = HashMap::new();
     for (i, (param_name, _)) in params.into_iter().enumerate() {
         let param = LLVMGetParam(function, i as u32);
-        LLVMSetValueName(param, param_name.as_ptr());
+        let llvm_param_name = param_name.clone().cstring();
+        LLVMSetValueName(param, llvm_param_name.as_ptr());
+        param_values.insert(param_name.clone(), param);
     }
-    function
+    (function, param_values)
 }
 
 pub unsafe fn llvm_function_entry(
