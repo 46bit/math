@@ -99,7 +99,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     for statement in &program.statements.0 {
         match statement {
             &Statement::FnDefinition(ref name, ref params, ref expr) => {
-                let function = Function::new(name, Some(params), None, None, expr).synthesise(
+                let function = Function::new(name, Some(params), expr).synthesise(
                     ctx,
                     module,
                     builder,
