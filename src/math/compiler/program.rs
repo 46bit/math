@@ -217,7 +217,7 @@ pub unsafe fn llvm_main(
     let mut vars = HashMap::new();
     for param in &params {
         if param.pre_initialised() {
-            let var_name = param.name().clone().cstring();
+            let var_name = llvm_name(&format!("{}_ptr", param.name().0));
             let var = llvm::core::LLVMBuildAlloca(builder, i64_type, var_name.as_ptr());
             vars.insert(param.name().clone(), var);
         }
@@ -238,7 +238,7 @@ pub unsafe fn llvm_main(
 
     for param in &params {
         if !param.pre_initialised() {
-            let var_name = param.name().clone().cstring();
+            let var_name = llvm_name(&format!("{}_ptr", param.name().0));
             let var = llvm::core::LLVMBuildAlloca(builder, i64_type, var_name.as_ptr());
             vars.insert(param.name().clone(), var);
         }
