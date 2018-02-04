@@ -467,8 +467,47 @@ impl Arbitrary for Operator {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use rand::thread_rng;
+    use quickcheck::{QuickCheck, StdGen};
+    use tempfile::NamedTempFile;
+
     #[test]
     fn it_works() {
         assert_eq!(2 + 2, 4);
+    }
+
+    //#[test]
+    fn compiles_successfully_property(program: Program) -> bool {
+        let math = format!("{}", program);
+        eprintln!("{}", math);
+        let tempfile = NamedTempFile::new().unwrap();
+        compile(
+            math.as_bytes(),
+            compiler::Emit::Binary(tempfile.path().to_path_buf()),
+        ).unwrap();
+        drop(tempfile);
+        true
+
+        //let inputs: Vec<i64> = (0..program.inputs.len()).map(|n| n as i64 - 3).collect();
+        //let result = execute(&program, &inputs);
+        //if let Ok(ref outputs) = result {
+        //    assert_eq!(outputs.len(), program.outputs.len());
+        //}
+        //if let Err(ref e) = result {
+        //    eprintln!("{:?}", e);
+        //}
+        //result.is_ok()
+    }
+
+    #[test]
+    fn compiles_successfully() {
+        // QuickCheck's default size creates infeasibly vast statements, and beyond some
+        // point they stop exploring novel code paths. This does a much better job of
+        // exploring potential edgecases.
+        for size in 1..11 {
+            let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
+            qc.quickcheck(compiles_successfully_property as fn(Program) -> bool);
+        }
     }
 }
