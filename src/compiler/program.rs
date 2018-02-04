@@ -108,7 +108,7 @@ pub unsafe fn define_run(
             if let Some(param_value) = param_values.get(&Name::new(&format!("{}_ptr", var_name))) {
                 vars.insert(var_name.clone(), *param_value);
             } else {
-                let var = allocate(builder, i64_ptr_type, var_name.clone().cstring());
+                let var = allocate(builder, i64_type, var_name.clone().cstring());
                 vars.insert(var_name.clone(), var);
             }
         }

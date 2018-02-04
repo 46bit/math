@@ -237,7 +237,7 @@ mod tests {
 
     fn synthesises_successfully_property(program: Program) -> bool {
         eprintln!("{}\n---", program);
-        unsafe { synthesise(&program).is_ok() }
+        unsafe { synthesise(&program, None).is_ok() }
     }
 
     #[test]
@@ -254,14 +254,14 @@ mod tests {
     #[test]
     fn can_synthesise_with_no_inputs_or_outputs() {
         unsafe {
-            synthesise(&parse(b"inputs; outputs;")).unwrap();
+            synthesise(&parse(b"inputs; outputs;"), None).unwrap();
         }
     }
 
     #[test]
     fn can_synthesise_inputs_into_outputs() {
         unsafe {
-            synthesise(&parse(b"inputs a; outputs a;")).unwrap();
+            synthesise(&parse(b"inputs a; outputs a;"), None).unwrap();
         }
     }
 
