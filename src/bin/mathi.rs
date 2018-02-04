@@ -1,6 +1,5 @@
-extern crate langs;
+extern crate math;
 
-use langs::math;
 use std::env;
 use std::io::{self, Read};
 

@@ -1,6 +1,5 @@
 use super::*;
 use self::shunting_yard::*;
-use math::*;
 use nom::is_digit;
 
 named!(pub expressions<&[u8], Vec<Expression>>,

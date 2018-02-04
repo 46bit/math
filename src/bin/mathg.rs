@@ -1,8 +1,7 @@
-extern crate langs;
+extern crate math;
 extern crate quickcheck;
 extern crate rand;
 
-use langs::math;
 use rand::StdRng;
 use quickcheck::{Arbitrary, StdGen};
 use std::env;
