@@ -89,9 +89,9 @@ impl Interpreter {
         let value2 = self.expression(operand2)?;
         // FIXME: Document these behaviours or raise errors
         Ok(match operator {
-            &Operator::Add => value1.saturating_add(value2),
-            &Operator::Subtract => value1.saturating_sub(value2),
-            &Operator::Multiply => value1.saturating_mul(value2),
+            &Operator::Add => value1.overflowing_add(value2).0,
+            &Operator::Subtract => value1.overflowing_sub(value2).0,
+            &Operator::Multiply => value1.overflowing_mul(value2).0,
             &Operator::Divide => if value2 == 0 {
                 i64::max_value()
             } else {
