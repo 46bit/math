@@ -3,7 +3,7 @@ use llvm::prelude::*;
 use llvm::LLVMIntPredicate;
 use llvm::core::*;
 
-pub unsafe fn llvm_input(
+pub unsafe fn llvm_define_input(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -59,7 +59,7 @@ pub unsafe fn llvm_input(
     function
 }
 
-pub unsafe fn llvm_output(
+pub unsafe fn llvm_define_output(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -98,7 +98,7 @@ pub unsafe fn llvm_output(
     function
 }
 
-pub unsafe fn llvm_run(
+pub unsafe fn llvm_define_run(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -140,6 +140,7 @@ pub unsafe fn llvm_run(
         }
         let value = ExpressionSynthesiser::synthesise(
             ctx,
+            module,
             builder,
             var_expression,
             &initialised_vars,
@@ -152,7 +153,7 @@ pub unsafe fn llvm_run(
     function
 }
 
-pub unsafe fn llvm_main(
+pub unsafe fn llvm_define_main(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,

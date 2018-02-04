@@ -87,6 +87,7 @@ impl<'a> FunctionSynthesiser<'a> {
             self.llvm_builder,
             ExpressionSynthesiser::synthesise(
                 self.llvm_ctx,
+                self.llvm_module,
                 self.llvm_builder,
                 self.function.returns,
                 &vars.iter().map(|(n, v)| (n.clone(), v.clone())).collect(),

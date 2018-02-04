@@ -1,0 +1,4 @@
+inputs a;
+x = 1 / 0;
+y = a / 0;
+outputs x, y;

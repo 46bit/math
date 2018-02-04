@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 pub struct ExpressionSynthesiser<'a> {
     llvm_ctx: LLVMContextRef,
+    llvm_module: LLVMModuleRef,
     llvm_builder: LLVMBuilderRef,
     vars: &'a HashMap<Name, LLVMValueRef>,
     fns: &'a HashMap<Name, LLVMValueRef>,
@@ -13,6 +14,7 @@ pub struct ExpressionSynthesiser<'a> {
 impl<'a> ExpressionSynthesiser<'a> {
     pub unsafe fn synthesise(
         llvm_ctx: LLVMContextRef,
+        llvm_module: LLVMModuleRef,
         llvm_builder: LLVMBuilderRef,
         expression: &Expression,
         vars: &'a HashMap<Name, LLVMValueRef>,
@@ -20,6 +22,7 @@ impl<'a> ExpressionSynthesiser<'a> {
     ) -> LLVMValueRef {
         ExpressionSynthesiser {
             llvm_ctx: llvm_ctx,
+            llvm_module: llvm_module,
             llvm_builder: llvm_builder,
             vars: vars,
             fns: fns,
@@ -54,7 +57,13 @@ impl<'a> ExpressionSynthesiser<'a> {
             }
             Operator::Divide => {
                 let llvm_name = llvm_name("tmp_div");
-                LLVMBuildSDiv(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                llvm_saturating_div(
+                    self.llvm_module,
+                    self.llvm_builder,
+                    llvm_lhs,
+                    llvm_rhs,
+                    llvm_name,
+                )
             }
             Operator::Multiply => {
                 let llvm_name = llvm_name("tmp_mul");

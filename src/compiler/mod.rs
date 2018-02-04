@@ -4,6 +4,7 @@ mod param;
 mod func;
 mod operations;
 mod program;
+mod io;
 
 use super::*;
 use self::param::*;
@@ -12,6 +13,7 @@ use self::expression::*;
 use self::func::*;
 use self::operations::*;
 use self::program::*;
+use self::io::*;
 use llvm;
 use llvm::prelude::*;
 use llvm::core::*;
@@ -63,36 +65,19 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     let module = LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
     let builder = LLVMCreateBuilderInContext(ctx);
 
-    let i32_type = LLVMInt32TypeInContext(ctx);
-    let i64_type = LLVMInt64TypeInContext(ctx);
-    let i64_ptr_type = LLVMPointerType(i64_type, 0);
-    let string_type = LLVMPointerType(LLVMInt8Type(), 0);
+    llvm_define_sscanf(ctx, module);
+    llvm_define_printf(ctx, module);
+    llvm_define_saturating_div(ctx, module, builder);
 
-    let fn_name = llvm_name("sscanf");
-    let param_types = &mut [string_type, string_type, i64_ptr_type];
-    let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 3, 1);
-    LLVMAddFunction(module, fn_name.as_ptr(), fn_type);
+    let input_function = llvm_define_input(ctx, module, builder, program.inputs.clone());
+    let output_function = llvm_define_output(ctx, module, builder, program.outputs.clone());
 
-    let fn_name = llvm_name("printf");
-    let param_types = &mut [string_type, i64_type];
-    let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 2, 1);
-    LLVMAddFunction(module, fn_name.as_ptr(), fn_type);
-
-    let input_function = llvm_input(ctx, module, builder, program.inputs.clone());
-    let output_function = llvm_output(ctx, module, builder, program.outputs.clone());
-
+    let mut defines = vec![];
     let mut assigns = vec![];
-    let mut functions = HashMap::new();
     for statement in &program.statements.0 {
         match statement {
             &Statement::FnDefinition(ref name, ref params, ref expr) => {
-                let function = Function::new(name, Some(params), expr).synthesise(
-                    ctx,
-                    module,
-                    builder,
-                    &functions,
-                );
-                functions.insert(name.clone(), function);
+                defines.push((name.clone(), params.clone(), expr.clone()));
             }
             &Statement::VarAssignment(ref name, ref expression) => {
                 assigns.push((name.clone(), expression.clone()));
@@ -100,29 +85,27 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
         }
     }
 
-    let mut input_positions: HashMap<Name, usize> = HashMap::new();
-    let mut params: Vec<Param> = program
-        .inputs
-        .iter()
-        .map(|input_name| Param::Input(input_name.clone()))
-        .collect();
-    for (i, input_name) in program.inputs.iter().enumerate() {
-        input_positions.insert(input_name.clone(), i);
+    let mut functions = HashMap::new();
+    for (name, params, expr) in defines {
+        let function_desc = Function::new(&name, Some(&params), &expr);
+        let function = function_desc.synthesise(ctx, module, builder, &functions);
+        functions.insert(name.clone(), function);
     }
-    for output_name in &program.outputs {
-        if let Some(i) = input_positions.get(&output_name) {
-            params[*i] = Param::InputAndOutput(output_name.clone());
-        } else {
-            params.push(Param::Output(output_name.clone()));
-        }
-    }
-    let run_function = llvm_run(ctx, module, builder, params.clone(), assigns, &functions);
 
-    llvm_main(
+    let run_params = classify_parameters(&program.inputs, &program.outputs);
+    let run_function = llvm_define_run(
         ctx,
         module,
         builder,
-        params,
+        run_params.clone(),
+        assigns,
+        &functions,
+    );
+    llvm_define_main(
+        ctx,
+        module,
+        builder,
+        run_params,
         input_function,
         run_function,
         output_function,

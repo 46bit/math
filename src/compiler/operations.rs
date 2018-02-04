@@ -2,6 +2,7 @@ use super::*;
 use std::ffi::CString;
 use llvm::prelude::*;
 use llvm::core::*;
+use llvm::LLVMIntPredicate;
 
 pub unsafe fn llvm_global_string_ptr(
     builder: LLVMBuilderRef,
@@ -54,29 +55,60 @@ pub unsafe fn llvm_call(
     )
 }
 
-pub unsafe fn llvm_sscanf(
+pub unsafe fn llvm_define_saturating_div(
+    ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    string: LLVMValueRef,
-    template: LLVMValueRef,
-    destination: LLVMValueRef,
-    name: CString,
 ) -> LLVMValueRef {
-    let sscanf_name = llvm_name("sscanf");
-    let sscanf_fn = LLVMGetNamedFunction(module, sscanf_name.as_ptr());
-    let args = &mut [string, template, destination];
-    llvm_call(builder, sscanf_fn, args, name)
+    let i64_type = LLVMInt64TypeInContext(ctx);
+
+    let fn_name = llvm_name("saturating_div");
+    let param_types = vec![
+        (Name::new("numerator"), i64_type),
+        (Name::new("denominator"), i64_type),
+    ];
+    let (function, param_values) = llvm_function_definition(module, fn_name, param_types, i64_type);
+    let numerator = param_values[&Name::new("numerator")];
+    let denominator = param_values[&Name::new("denominator")];
+
+    let name = llvm_name("entry");
+    let entry_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("then");
+    let then_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("else");
+    let else_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+
+    LLVMPositionBuilderAtEnd(builder, entry_block);
+    let cmp_name = llvm_name("do_not_divide_by_zero_cmp");
+    let cmp = LLVMBuildICmp(
+        builder,
+        LLVMIntPredicate::LLVMIntNE,
+        denominator,
+        LLVMConstInt(i64_type, 0, 0),
+        cmp_name.as_ptr(),
+    );
+    LLVMBuildCondBr(builder, cmp, then_block, else_block);
+
+    LLVMPositionBuilderAtEnd(builder, then_block);
+    let llvm_name = llvm_name("tmp_div");
+    let sdiv = LLVMBuildSDiv(builder, numerator, denominator, llvm_name.as_ptr());
+    llvm_function_return(builder, sdiv);
+
+    LLVMPositionBuilderAtEnd(builder, else_block);
+    llvm_function_return(builder, LLVMConstInt(i64_type, i64::max_value() as u64, 0));
+
+    function
 }
 
-pub unsafe fn llvm_printf(
+pub unsafe fn llvm_saturating_div(
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    template: LLVMValueRef,
-    output: LLVMValueRef,
+    numerator: LLVMValueRef,
+    denominator: LLVMValueRef,
     name: CString,
 ) -> LLVMValueRef {
-    let printf_name = llvm_name("printf");
-    let printf_fn = LLVMGetNamedFunction(module, printf_name.as_ptr());
-    let args = &mut [template, output];
-    llvm_call(builder, printf_fn, args, name)
+    let saturating_div_name = llvm_name("saturating_div");
+    let saturating_div_fn = LLVMGetNamedFunction(module, saturating_div_name.as_ptr());
+    let args = &mut [numerator, denominator];
+    llvm_call(builder, saturating_div_fn, args, name)
 }
