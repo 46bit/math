@@ -109,6 +109,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
         run_function,
         output_function,
         program.inputs.len() as u64,
+        program.outputs.clone(),
     );
 
     LLVMDisposeBuilder(builder);

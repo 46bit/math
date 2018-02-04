@@ -129,6 +129,7 @@ pub unsafe fn define_main(
     run_function: LLVMValueRef,
     output_function: LLVMValueRef,
     input_count: u64,
+    outputs: Vec<Name>,
 ) -> LLVMValueRef {
     let i64_type = LLVMInt64TypeInContext(ctx);
     let argv_type = LLVMPointerType(LLVMPointerType(LLVMInt8Type(), 0), 0);
@@ -210,12 +211,14 @@ pub unsafe fn define_main(
     let run_args = run_args.as_mut_slice();
     call(builder, run_function, run_args, llvm_name(""));
 
-    let mut output_args = vec![];
+    let mut params_map = HashMap::new();
     for param in &params {
-        if param.outputted() {
-            output_args.push(vars[param.name()]);
-        }
+        params_map.insert(param.name().clone(), vars[param.name()]);
     }
+    let mut output_args: Vec<LLVMValueRef> = outputs
+        .iter()
+        .map(|output_name| params_map[output_name])
+        .collect();
     let output_args = output_args.as_mut_slice();
     call(builder, output_function, output_args, llvm_name(""));
 

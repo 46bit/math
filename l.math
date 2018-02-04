@@ -1,0 +1,3 @@
+inputs t, u;
+z() = -1;
+outputs u, t;
