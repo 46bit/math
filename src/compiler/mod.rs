@@ -38,6 +38,7 @@ pub enum Emit {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Unknown,
+    UnassignedOutput(Name),
 }
 
 pub unsafe fn compile(program: &Program, emit: Emit) -> Result<String, Error> {
@@ -74,6 +75,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
 
     let mut defines = vec![];
     let mut assigns = vec![];
+    let mut assign_set = HashSet::new();
     for statement in &program.statements.0 {
         match statement {
             &Statement::FnDefinition(ref name, ref params, ref expr) => {
@@ -81,6 +83,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
             }
             &Statement::VarAssignment(ref name, ref expression) => {
                 assigns.push((name.clone(), expression.clone()));
+                assign_set.insert(name.clone());
             }
         }
     }
@@ -91,7 +94,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
         functions.insert(name.clone(), function);
     }
 
-    let run_params = classify_parameters(&program.inputs, &program.outputs);
+    let run_params = classify_parameters(&program.inputs, &program.outputs, assign_set)?;
     let run_function = define_run(
         ctx,
         module,

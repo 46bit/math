@@ -1,6 +1,10 @@
 use super::*;
 
-pub fn classify_parameters(inputs: &Vec<Name>, outputs: &Vec<Name>) -> Vec<Param> {
+pub fn classify_parameters(
+    inputs: &Vec<Name>,
+    outputs: &Vec<Name>,
+    assign_set: HashSet<Name>,
+) -> Result<Vec<Param>, Error> {
     let mut params = vec![];
     let mut params_index_by_name = HashMap::new();
 
@@ -28,13 +32,15 @@ pub fn classify_parameters(inputs: &Vec<Name>, outputs: &Vec<Name>) -> Vec<Param
             if param.is_input() && !param.is_output() {
                 *param = Param::InputAndOutput(output);
             }
-        } else {
+        } else if assign_set.contains(&output) {
             params_index_by_name.insert(output.clone(), params.len());
             params.push(Param::Output(output));
+        } else {
+            return Err(Error::UnassignedOutput(output));
         }
     }
 
-    params
+    Ok(params)
 }
 
 #[derive(Debug, Clone)]
@@ -71,13 +77,6 @@ impl Param {
         match self {
             &Param::Input(_) | &Param::InputAndOutput(_) => true,
             &Param::Output(_) => false,
-        }
-    }
-
-    pub fn outputted(&self) -> bool {
-        match self {
-            &Param::Output(_) | &Param::InputAndOutput(_) => true,
-            &Param::Input(_) => false,
         }
     }
 }
