@@ -141,8 +141,17 @@ fn arbitrary_program<G: Gen>(
     fns: &mut HashMap<Name, usize>,
 ) -> Program {
     let size = g.size();
-    let input_len = 0..g.gen_range(0, size + 1);
-    let inputs: Vec<Name> = input_len.map(|_| arbitrary_name(g, 1)).collect();
+
+    // Avoid duplicate inputs.
+    let mut inputs = vec![];
+    let mut input_set = HashSet::new();
+    for _ in 0..g.gen_range(0, size + 1) {
+        let input = arbitrary_name(g, 1);
+        if !input_set.contains(&input) {
+            inputs.push(input.clone());
+            input_set.insert(input);
+        }
+    }
 
     vars.extend(inputs.iter().cloned());
     let statements = arbitrary_statements(g, &mut vars, fns);

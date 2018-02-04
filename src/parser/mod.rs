@@ -19,15 +19,24 @@ pub enum Error {
     RemainingInput(Vec<u8>, Program),
     Nom(simple_errors::Err<u32>),
     NomIncomplete(Needed),
+    DuplicateInput(Name),
 }
 
 pub fn parse(s: &[u8]) -> Result<Program, Error> {
-    match program(s) {
+    let program = match program(s) {
         IResult::Done(&[], program) => Ok(program),
         IResult::Done(i, o) => Err(Error::RemainingInput(i.to_vec(), o)),
         IResult::Error(e) => Err(Error::Nom(e)),
         IResult::Incomplete(n) => Err(Error::NomIncomplete(n)),
+    }?;
+    let mut input_map = HashSet::new();
+    for input in &program.inputs {
+        if input_map.contains(input) {
+            return Err(Error::DuplicateInput(input.clone()));
+        }
+        input_map.insert(input.clone());
     }
+    Ok(program)
 }
 
 pub fn parse_one(s: &[u8]) -> Result<Statement, Error> {
