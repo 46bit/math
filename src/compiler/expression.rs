@@ -3,7 +3,24 @@ use llvm::prelude::*;
 use llvm::core::*;
 use std::collections::HashMap;
 
-pub struct ExpressionSynthesiser<'a> {
+pub unsafe fn synthesise_expression(
+    ctx: LLVMContextRef,
+    module: LLVMModuleRef,
+    builder: LLVMBuilderRef,
+    expression: &Expression,
+    vars: &HashMap<Name, LLVMValueRef>,
+    fns: &HashMap<Name, LLVMValueRef>,
+) -> LLVMValueRef {
+    ExpressionSynthesiser {
+        ctx: ctx,
+        module: module,
+        builder: builder,
+        vars: vars,
+        fns: fns,
+    }.synthesise(expression)
+}
+
+struct ExpressionSynthesiser<'a> {
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -12,24 +29,7 @@ pub struct ExpressionSynthesiser<'a> {
 }
 
 impl<'a> ExpressionSynthesiser<'a> {
-    pub unsafe fn synthesise(
-        ctx: LLVMContextRef,
-        module: LLVMModuleRef,
-        builder: LLVMBuilderRef,
-        expression: &Expression,
-        vars: &'a HashMap<Name, LLVMValueRef>,
-        fns: &HashMap<Name, LLVMValueRef>,
-    ) -> LLVMValueRef {
-        ExpressionSynthesiser {
-            ctx: ctx,
-            module: module,
-            builder: builder,
-            vars: vars,
-            fns: fns,
-        }.synthesise_expression(expression)
-    }
-
-    unsafe fn synthesise_expression(&self, expression: &Expression) -> LLVMValueRef {
+    unsafe fn synthesise(&self, expression: &Expression) -> LLVMValueRef {
         match expression {
             &Expression::Operand(ref operand) => self.synthesise_operand(operand),
             &Expression::Operation(operator, ref lhs, ref rhs) => {
@@ -44,8 +44,8 @@ impl<'a> ExpressionSynthesiser<'a> {
         lhs: &Expression,
         rhs: &Expression,
     ) -> LLVMValueRef {
-        let lhs = self.synthesise_expression(lhs);
-        let rhs = self.synthesise_expression(rhs);
+        let lhs = self.synthesise(lhs);
+        let rhs = self.synthesise(rhs);
         match operator {
             Operator::Subtract => {
                 let name = llvm_name("tmp_sub");
@@ -71,7 +71,7 @@ impl<'a> ExpressionSynthesiser<'a> {
         let i64_ptr_type = LLVMPointerType(i64_type, 0);
         match operand {
             &Operand::I64(n) => LLVMConstInt(i64_type, n as u64, 0),
-            &Operand::Group(ref expression) => self.synthesise_expression(expression),
+            &Operand::Group(ref expression) => self.synthesise(expression),
             &Operand::VarSubstitution(ref name) => {
                 let var = self.vars[&name];
                 let var_type = LLVMTypeOf(var);
@@ -87,7 +87,7 @@ impl<'a> ExpressionSynthesiser<'a> {
             &Operand::FnApplication(ref name, ref args) => synthesise_fn_application(
                 self.builder,
                 name,
-                args.iter().map(|e| self.synthesise_expression(e)).collect(),
+                args.iter().map(|e| self.synthesise(e)).collect(),
                 self.fns,
             ),
         }

@@ -2,6 +2,7 @@ use super::*;
 use llvm::prelude::*;
 use llvm::LLVMIntPredicate;
 use llvm::core::*;
+use std::iter;
 
 pub unsafe fn define_input(
     ctx: LLVMContextRef,
@@ -12,6 +13,8 @@ pub unsafe fn define_input(
     let i64_type = LLVMInt64TypeInContext(ctx);
     let i64_ptr_type = LLVMPointerType(i64_type, 0);
     let argv_type = LLVMPointerType(LLVMPointerType(LLVMInt8Type(), 0), 0);
+    let void_type = LLVMVoidTypeInContext(ctx);
+    let i64_tmpl = global_string_ptr(builder, llvm_name("i64_tmpl"), llvm_name("%lld"));
 
     let mut params = vec![
         (Name::new("argc"), i64_type),
@@ -20,41 +23,23 @@ pub unsafe fn define_input(
     params.extend(
         inputs
             .iter()
-            .map(|input_name| (Name::new(&format!("{}_ptr", input_name)), i64_ptr_type)),
+            .map(|input_name| Name::new(&format!("{}_ptr", input_name)))
+            .zip(iter::repeat(i64_ptr_type)),
     );
+    let fn_name = llvm_name("input");
+    let (function, params) = function_definition(module, fn_name, params, void_type);
+    let argv = params[&Name::new("argv")];
 
-    let (function, params) = function_definition(
-        module,
-        llvm_name("input"),
-        params,
-        LLVMVoidTypeInContext(ctx),
-    );
     function_entry(ctx, builder, llvm_name("entry"), function);
-
-    let i64_tmpl = global_string_ptr(builder, llvm_name("i64_tmpl"), llvm_name("%lld"));
     for (i, input_name) in inputs.into_iter().enumerate() {
+        let argv_el_name = Name::new(&format!("{}_argv_el", input_name)).cstring();
+        let argv_el = getelement(ctx, builder, argv, 1 + i as u64, argv_el_name);
+
+        let sscanf_name = Name::new(&format!("{}_sscanf", input_name)).cstring();
         let input_ptr = LLVMGetParam(function, 2 + i as u32);
-        let argv_el_ptr = getelementptr(
-            ctx,
-            builder,
-            params[&Name::new("argv")],
-            1 + i as u64,
-            Name::new(&format!("{}_argv_ptr", input_name)).cstring(),
-        );
-        let argv_el = load(
-            builder,
-            argv_el_ptr,
-            Name::new(&format!("{}_argv", input_name)).cstring(),
-        );
-        sscanf(
-            module,
-            builder,
-            argv_el,
-            i64_tmpl,
-            input_ptr,
-            Name::new(&format!("{}_sscanf", input_name)).cstring(),
-        );
+        sscanf(module, builder, argv_el, i64_tmpl, input_ptr, sscanf_name);
     }
+
     LLVMBuildRetVoid(builder);
     function
 }
@@ -67,31 +52,23 @@ pub unsafe fn define_output(
 ) -> LLVMValueRef {
     let i64_type = LLVMInt64TypeInContext(ctx);
     let i64_ptr_type = LLVMPointerType(i64_type, 0);
+    let void_type = LLVMVoidTypeInContext(ctx);
+    let i64_line_tmpl = global_string_ptr(builder, llvm_name("i64_line_tmpl"), llvm_name("%lld\n"));
 
     let param_types = outputs
         .iter()
-        .map(|output_name| (Name::new(&format!("{}_ptr", output_name)), i64_ptr_type))
+        .map(|output_name| Name::new(&format!("{}_ptr", output_name)))
+        .zip(iter::repeat(i64_ptr_type))
         .collect();
+    let fn_name = llvm_name("output");
+    let (function, params) = function_definition(module, fn_name, param_types, void_type);
 
-    let (function, params) = function_definition(
-        module,
-        llvm_name("output"),
-        param_types,
-        LLVMVoidTypeInContext(ctx),
-    );
     function_entry(ctx, builder, llvm_name("entry"), function);
-
-    let i64_line_tmpl = global_string_ptr(builder, llvm_name("i64_line_tmpl"), llvm_name("%lld\n"));
     for output_name in outputs {
         let output_ptr = params[&Name::new(&format!("{}_ptr", output_name))];
         let output = load(builder, output_ptr, output_name.clone().cstring());
-        printf(
-            module,
-            builder,
-            i64_line_tmpl,
-            output,
-            Name::new(&format!("{}_printf", output_name)).cstring(),
-        );
+        let printf_name = Name::new(&format!("{}_printf", output_name)).cstring();
+        printf(module, builder, i64_line_tmpl, output, printf_name);
     }
     LLVMBuildRetVoid(builder);
     function
@@ -111,41 +88,32 @@ pub unsafe fn define_run(
 
     let param_types = params
         .iter()
-        .map(|param| (Name::new(&format!("{}_ptr", param.name())), i64_ptr_type))
+        .map(|param| Name::new(&format!("{}_ptr", param.name())))
+        .zip(iter::repeat(i64_ptr_type))
         .collect();
-    let (function, param_values) =
-        function_definition(module, llvm_name("run"), param_types, void_type);
-    function_entry(ctx, builder, llvm_name("entry"), function);
+    let fn_name = llvm_name("run");
+    let (function, param_values) = function_definition(module, fn_name, param_types, void_type);
 
-    let mut initialised_vars = HashMap::new();
+    let mut vars = HashMap::new();
     for param in &params {
         if param.pre_initialised() {
-            initialised_vars.insert(
-                param.name().clone(),
-                param_values[&Name::new(&format!("{}_ptr", param.name()))],
-            );
+            let value = param_values[&Name::new(&format!("{}_ptr", param.name()))];
+            vars.insert(param.name().clone(), value);
         }
     }
 
-    for &(ref var_name, ref var_expression) in &assigns {
-        if !initialised_vars.contains_key(var_name) {
+    function_entry(ctx, builder, llvm_name("entry"), function);
+    for &(ref var_name, ref expression) in &assigns {
+        if !vars.contains_key(var_name) {
             if let Some(param_value) = param_values.get(&Name::new(&format!("{}_ptr", var_name))) {
-                initialised_vars.insert(var_name.clone(), *param_value);
+                vars.insert(var_name.clone(), *param_value);
             } else {
-                let var_name_cstring = var_name.clone().cstring();
-                let var = LLVMBuildAlloca(builder, i64_ptr_type, var_name_cstring.as_ptr());
-                initialised_vars.insert(var_name.clone(), var);
+                let var = allocate(builder, i64_ptr_type, var_name.clone().cstring());
+                vars.insert(var_name.clone(), var);
             }
         }
-        let value = ExpressionSynthesiser::synthesise(
-            ctx,
-            module,
-            builder,
-            var_expression,
-            &initialised_vars,
-            &functions,
-        );
-        LLVMBuildStore(builder, value, initialised_vars[var_name]);
+        let value = synthesise_expression(ctx, module, builder, expression, &vars, &functions);
+        LLVMBuildStore(builder, value, vars[var_name]);
     }
 
     LLVMBuildRetVoid(builder);

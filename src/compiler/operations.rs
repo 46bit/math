@@ -24,6 +24,18 @@ pub unsafe fn getelementptr(
     LLVMBuildGEP(builder, array, index.as_mut_ptr(), 1, name.as_ptr())
 }
 
+pub unsafe fn getelement(
+    ctx: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    array: LLVMValueRef,
+    index: u64,
+    name: CString,
+) -> LLVMValueRef {
+    let ptr_name = llvm_name(&format!("{}_ptr", name.clone().into_string().unwrap()));
+    let ptr = getelementptr(ctx, builder, array, index, ptr_name);
+    load(builder, ptr, name)
+}
+
 pub unsafe fn allocate(builder: LLVMBuilderRef, t: LLVMTypeRef, name: CString) -> LLVMValueRef {
     LLVMBuildAlloca(builder, t, name.as_ptr())
 }

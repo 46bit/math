@@ -87,8 +87,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
 
     let mut functions = HashMap::new();
     for (name, params, expr) in defines {
-        let function_desc = Function::new(&name, Some(&params), &expr);
-        let function = function_desc.synthesise(ctx, module, builder, &functions);
+        let function = synthesise_function(ctx, module, builder, &name, &params, &expr, &functions);
         functions.insert(name.clone(), function);
     }
 

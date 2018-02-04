@@ -4,68 +4,51 @@ use llvm::core::*;
 use std::iter;
 use std::collections::HashMap;
 
-pub struct Function<'a> {
-    pub name: &'a Name,
-    params: Option<&'a Vec<Name>>,
-    pub returns: &'a Expression,
-}
-
-impl<'a> Function<'a> {
-    pub fn new(
-        name: &'a Name,
-        params: Option<&'a Vec<Name>>,
-        returns: &'a Expression,
-    ) -> Function<'a> {
-        Function {
-            name: name,
-            params: params,
-            returns: returns,
-        }
-    }
-
-    pub fn params(&'a self) -> impl Iterator<Item = &'a Name> + 'a {
-        self.params.iter().flat_map(|v| v.iter())
-    }
-
-    pub unsafe fn synthesise(
-        &self,
-        ctx: LLVMContextRef,
-        module: *mut llvm::LLVMModule,
-        builder: LLVMBuilderRef,
-        external_functions: &HashMap<Name, LLVMValueRef>,
-    ) -> LLVMValueRef {
-        FunctionSynthesiser {
-            function: &self,
-            ctx: ctx,
-            module: module,
-            builder: builder,
-        }.synthesise(external_functions)
-    }
+pub unsafe fn synthesise_function(
+    ctx: LLVMContextRef,
+    module: LLVMModuleRef,
+    builder: LLVMBuilderRef,
+    name: &Name,
+    params: &Vec<Name>,
+    returns: &Expression,
+    functions: &HashMap<Name, LLVMValueRef>,
+) -> LLVMValueRef {
+    FunctionSynthesiser {
+        ctx: ctx,
+        module: module,
+        builder: builder,
+        functions: functions,
+    }.synthesise(name, &params, returns)
 }
 
 struct FunctionSynthesiser<'a> {
-    function: &'a Function<'a>,
     ctx: LLVMContextRef,
-    module: *mut llvm::LLVMModule,
+    module: LLVMModuleRef,
     builder: LLVMBuilderRef,
+    functions: &'a HashMap<Name, LLVMValueRef>,
 }
 
 impl<'a> FunctionSynthesiser<'a> {
-    unsafe fn synthesise(&self, external_functions: &HashMap<Name, LLVMValueRef>) -> LLVMValueRef {
-        let (function, mut vars) = self.synthesise_fn();
+    unsafe fn synthesise(
+        &self,
+        name: &Name,
+        params: &Vec<Name>,
+        returns: &Expression,
+    ) -> LLVMValueRef {
+        let (function, mut vars) = self.synthesise_fn(name, params);
         self.synthesise_entry(function);
-        self.synthesise_return(&mut vars, external_functions);
+        self.synthesise_return(returns, &mut vars);
         function
     }
 
-    unsafe fn synthesise_fn(&self) -> (LLVMValueRef, HashMap<Name, LLVMValueRef>) {
+    unsafe fn synthesise_fn(
+        &self,
+        name: &Name,
+        params: &Vec<Name>,
+    ) -> (LLVMValueRef, HashMap<Name, LLVMValueRef>) {
         let i64_type = LLVMInt64TypeInContext(self.ctx);
-        let name = into_llvm_name(self.function.name.clone());
-        let params = self.function
-            .params()
-            .cloned()
-            .zip(iter::repeat(i64_type))
-            .collect();
+        let params = params.iter().cloned().zip(iter::repeat(i64_type)).collect();
+        let name = into_llvm_name(name.clone());
         function_definition(self.module, name, params, i64_type)
     }
 
@@ -73,22 +56,16 @@ impl<'a> FunctionSynthesiser<'a> {
         function_entry(self.ctx, self.builder, llvm_name("entry"), function);
     }
 
-    unsafe fn synthesise_return(
-        &self,
-        vars: &HashMap<Name, LLVMValueRef>,
-        external_functions: &HashMap<Name, LLVMValueRef>,
-    ) {
-        LLVMBuildRet(
+    unsafe fn synthesise_return(&self, returns: &Expression, vars: &HashMap<Name, LLVMValueRef>) {
+        let value = synthesise_expression(
+            self.ctx,
+            self.module,
             self.builder,
-            ExpressionSynthesiser::synthesise(
-                self.ctx,
-                self.module,
-                self.builder,
-                self.function.returns,
-                &vars.iter().map(|(n, v)| (n.clone(), v.clone())).collect(),
-                external_functions,
-            ),
+            returns,
+            vars,
+            self.functions,
         );
+        LLVMBuildRet(self.builder, value);
     }
 }
 
