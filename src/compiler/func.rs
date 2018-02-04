@@ -3,7 +3,7 @@ use std::ffi::CString;
 use llvm::prelude::*;
 use llvm::core::*;
 
-pub unsafe fn llvm_function_definition(
+pub unsafe fn function_definition(
     module: LLVMModuleRef,
     name: CString,
     params: Vec<(Name, LLVMTypeRef)>,
@@ -30,7 +30,7 @@ pub unsafe fn llvm_function_definition(
     (function, param_values)
 }
 
-pub unsafe fn llvm_function_entry(
+pub unsafe fn function_entry(
     ctx: LLVMContextRef,
     builder: LLVMBuilderRef,
     name: CString,
@@ -40,6 +40,6 @@ pub unsafe fn llvm_function_entry(
     LLVMPositionBuilderAtEnd(builder, block);
 }
 
-pub unsafe fn llvm_function_return(builder: LLVMBuilderRef, value: LLVMValueRef) {
+pub unsafe fn function_return(builder: LLVMBuilderRef, value: LLVMValueRef) {
     LLVMBuildRet(builder, value);
 }

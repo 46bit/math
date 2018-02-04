@@ -29,53 +29,48 @@ impl<'a> Function<'a> {
 
     pub unsafe fn synthesise(
         &self,
-        llvm_ctx: LLVMContextRef,
-        llvm_module: *mut llvm::LLVMModule,
-        llvm_builder: LLVMBuilderRef,
+        ctx: LLVMContextRef,
+        module: *mut llvm::LLVMModule,
+        builder: LLVMBuilderRef,
         external_functions: &HashMap<Name, LLVMValueRef>,
     ) -> LLVMValueRef {
         FunctionSynthesiser {
             function: &self,
-            llvm_ctx: llvm_ctx,
-            llvm_module: llvm_module,
-            llvm_builder: llvm_builder,
+            ctx: ctx,
+            module: module,
+            builder: builder,
         }.synthesise(external_functions)
     }
 }
 
 struct FunctionSynthesiser<'a> {
     function: &'a Function<'a>,
-    llvm_ctx: LLVMContextRef,
-    llvm_module: *mut llvm::LLVMModule,
-    llvm_builder: LLVMBuilderRef,
+    ctx: LLVMContextRef,
+    module: *mut llvm::LLVMModule,
+    builder: LLVMBuilderRef,
 }
 
 impl<'a> FunctionSynthesiser<'a> {
     unsafe fn synthesise(&self, external_functions: &HashMap<Name, LLVMValueRef>) -> LLVMValueRef {
-        let (llvm_fn, mut vars) = self.synthesise_fn();
-        self.synthesise_entry(llvm_fn);
+        let (function, mut vars) = self.synthesise_fn();
+        self.synthesise_entry(function);
         self.synthesise_return(&mut vars, external_functions);
-        return llvm_fn;
+        function
     }
 
     unsafe fn synthesise_fn(&self) -> (LLVMValueRef, HashMap<Name, LLVMValueRef>) {
-        let i64_type = LLVMInt64TypeInContext(self.llvm_ctx);
+        let i64_type = LLVMInt64TypeInContext(self.ctx);
         let name = into_llvm_name(self.function.name.clone());
         let params = self.function
             .params()
             .cloned()
             .zip(iter::repeat(i64_type))
             .collect();
-        llvm_function_definition(self.llvm_module, name, params, i64_type)
+        function_definition(self.module, name, params, i64_type)
     }
 
-    unsafe fn synthesise_entry(&self, llvm_fn: LLVMValueRef) {
-        llvm_function_entry(
-            self.llvm_ctx,
-            self.llvm_builder,
-            llvm_name("entry"),
-            llvm_fn,
-        );
+    unsafe fn synthesise_entry(&self, function: LLVMValueRef) {
+        function_entry(self.ctx, self.builder, llvm_name("entry"), function);
     }
 
     unsafe fn synthesise_return(
@@ -84,11 +79,11 @@ impl<'a> FunctionSynthesiser<'a> {
         external_functions: &HashMap<Name, LLVMValueRef>,
     ) {
         LLVMBuildRet(
-            self.llvm_builder,
+            self.builder,
             ExpressionSynthesiser::synthesise(
-                self.llvm_ctx,
-                self.llvm_module,
-                self.llvm_builder,
+                self.ctx,
+                self.module,
+                self.builder,
                 self.function.returns,
                 &vars.iter().map(|(n, v)| (n.clone(), v.clone())).collect(),
                 external_functions,
@@ -98,19 +93,19 @@ impl<'a> FunctionSynthesiser<'a> {
 }
 
 pub unsafe fn synthesise_fn_application(
-    llvm_builder: LLVMBuilderRef,
+    builder: LLVMBuilderRef,
     name: &Name,
-    mut llvm_args: Vec<LLVMValueRef>,
+    mut args: Vec<LLVMValueRef>,
     fns: &HashMap<Name, LLVMValueRef>,
 ) -> LLVMValueRef {
-    let llvm_function = fns.get(&name).unwrap();
-    let llvm_fn_name = into_llvm_name(name.clone());
-    let llvm_args_slice = llvm_args.as_mut_slice();
+    let function = fns.get(&name).unwrap();
+    let fn_name = into_llvm_name(name.clone());
+    let args_slice = args.as_mut_slice();
     LLVMBuildCall(
-        llvm_builder,
-        *llvm_function,
-        llvm_args_slice.as_mut_ptr(),
-        llvm_args_slice.len() as u32,
-        llvm_fn_name.as_ptr(),
+        builder,
+        *function,
+        args_slice.as_mut_ptr(),
+        args_slice.len() as u32,
+        fn_name.as_ptr(),
     )
 }

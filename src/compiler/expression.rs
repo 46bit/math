@@ -4,26 +4,26 @@ use llvm::core::*;
 use std::collections::HashMap;
 
 pub struct ExpressionSynthesiser<'a> {
-    llvm_ctx: LLVMContextRef,
-    llvm_module: LLVMModuleRef,
-    llvm_builder: LLVMBuilderRef,
+    ctx: LLVMContextRef,
+    module: LLVMModuleRef,
+    builder: LLVMBuilderRef,
     vars: &'a HashMap<Name, LLVMValueRef>,
     fns: &'a HashMap<Name, LLVMValueRef>,
 }
 
 impl<'a> ExpressionSynthesiser<'a> {
     pub unsafe fn synthesise(
-        llvm_ctx: LLVMContextRef,
-        llvm_module: LLVMModuleRef,
-        llvm_builder: LLVMBuilderRef,
+        ctx: LLVMContextRef,
+        module: LLVMModuleRef,
+        builder: LLVMBuilderRef,
         expression: &Expression,
         vars: &'a HashMap<Name, LLVMValueRef>,
         fns: &HashMap<Name, LLVMValueRef>,
     ) -> LLVMValueRef {
         ExpressionSynthesiser {
-            llvm_ctx: llvm_ctx,
-            llvm_module: llvm_module,
-            llvm_builder: llvm_builder,
+            ctx: ctx,
+            module: module,
+            builder: builder,
             vars: vars,
             fns: fns,
         }.synthesise_expression(expression)
@@ -44,36 +44,30 @@ impl<'a> ExpressionSynthesiser<'a> {
         lhs: &Expression,
         rhs: &Expression,
     ) -> LLVMValueRef {
-        let llvm_lhs = self.synthesise_expression(lhs);
-        let llvm_rhs = self.synthesise_expression(rhs);
+        let lhs = self.synthesise_expression(lhs);
+        let rhs = self.synthesise_expression(rhs);
         match operator {
             Operator::Subtract => {
-                let llvm_name = llvm_name("tmp_sub");
-                LLVMBuildSub(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                let name = llvm_name("tmp_sub");
+                LLVMBuildSub(self.builder, lhs, rhs, name.as_ptr())
             }
             Operator::Add => {
-                let llvm_name = llvm_name("tmp_add");
-                LLVMBuildAdd(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                let name = llvm_name("tmp_add");
+                LLVMBuildAdd(self.builder, lhs, rhs, name.as_ptr())
             }
             Operator::Divide => {
-                let llvm_name = llvm_name("tmp_div");
-                llvm_saturating_div(
-                    self.llvm_module,
-                    self.llvm_builder,
-                    llvm_lhs,
-                    llvm_rhs,
-                    llvm_name,
-                )
+                let name = llvm_name("tmp_div");
+                saturating_div(self.module, self.builder, lhs, rhs, name)
             }
             Operator::Multiply => {
-                let llvm_name = llvm_name("tmp_mul");
-                LLVMBuildMul(self.llvm_builder, llvm_lhs, llvm_rhs, llvm_name.as_ptr())
+                let name = llvm_name("tmp_mul");
+                LLVMBuildMul(self.builder, lhs, rhs, name.as_ptr())
             }
         }
     }
 
     unsafe fn synthesise_operand(&self, operand: &Operand) -> LLVMValueRef {
-        let i64_type = LLVMInt64TypeInContext(self.llvm_ctx);
+        let i64_type = LLVMInt64TypeInContext(self.ctx);
         let i64_ptr_type = LLVMPointerType(i64_type, 0);
         match operand {
             &Operand::I64(n) => LLVMConstInt(i64_type, n as u64, 0),
@@ -84,14 +78,14 @@ impl<'a> ExpressionSynthesiser<'a> {
                 if var_type == i64_type {
                     var
                 } else if var_type == i64_ptr_type {
-                    let llvm_name = into_llvm_name(name.clone());
-                    LLVMBuildLoad(self.llvm_builder, var, llvm_name.as_ptr())
+                    let name = into_llvm_name(name.clone());
+                    LLVMBuildLoad(self.builder, var, name.as_ptr())
                 } else {
                     unimplemented!();
                 }
             }
             &Operand::FnApplication(ref name, ref args) => synthesise_fn_application(
-                self.llvm_builder,
+                self.builder,
                 name,
                 args.iter().map(|e| self.synthesise_expression(e)).collect(),
                 self.fns,

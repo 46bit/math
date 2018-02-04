@@ -65,12 +65,12 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     let module = LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
     let builder = LLVMCreateBuilderInContext(ctx);
 
-    llvm_define_sscanf(ctx, module);
-    llvm_define_printf(ctx, module);
-    llvm_define_saturating_div(ctx, module, builder);
+    define_sscanf(ctx, module);
+    define_printf(ctx, module);
+    define_saturating_div(ctx, module, builder);
 
-    let input_function = llvm_define_input(ctx, module, builder, program.inputs.clone());
-    let output_function = llvm_define_output(ctx, module, builder, program.outputs.clone());
+    let input_function = define_input(ctx, module, builder, program.inputs.clone());
+    let output_function = define_output(ctx, module, builder, program.outputs.clone());
 
     let mut defines = vec![];
     let mut assigns = vec![];
@@ -93,7 +93,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     }
 
     let run_params = classify_parameters(&program.inputs, &program.outputs);
-    let run_function = llvm_define_run(
+    let run_function = define_run(
         ctx,
         module,
         builder,
@@ -101,7 +101,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
         assigns,
         &functions,
     );
-    llvm_define_main(
+    define_main(
         ctx,
         module,
         builder,

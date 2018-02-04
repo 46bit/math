@@ -4,7 +4,7 @@ use llvm::prelude::*;
 use llvm::core::*;
 use llvm::LLVMIntPredicate;
 
-pub unsafe fn llvm_global_string_ptr(
+pub unsafe fn global_string_ptr(
     builder: LLVMBuilderRef,
     name: CString,
     string: CString,
@@ -12,7 +12,7 @@ pub unsafe fn llvm_global_string_ptr(
     LLVMBuildGlobalStringPtr(builder, string.as_ptr(), name.as_ptr())
 }
 
-pub unsafe fn llvm_getelement(
+pub unsafe fn getelementptr(
     ctx: LLVMContextRef,
     builder: LLVMBuilderRef,
     array: LLVMValueRef,
@@ -24,23 +24,15 @@ pub unsafe fn llvm_getelement(
     LLVMBuildGEP(builder, array, index.as_mut_ptr(), 1, name.as_ptr())
 }
 
-pub unsafe fn llvm_allocate(
-    builder: LLVMBuilderRef,
-    t: LLVMTypeRef,
-    name: CString,
-) -> LLVMValueRef {
+pub unsafe fn allocate(builder: LLVMBuilderRef, t: LLVMTypeRef, name: CString) -> LLVMValueRef {
     LLVMBuildAlloca(builder, t, name.as_ptr())
 }
 
-pub unsafe fn llvm_load(
-    builder: LLVMBuilderRef,
-    from: LLVMValueRef,
-    name: CString,
-) -> LLVMValueRef {
+pub unsafe fn load(builder: LLVMBuilderRef, from: LLVMValueRef, name: CString) -> LLVMValueRef {
     LLVMBuildLoad(builder, from, name.as_ptr())
 }
 
-pub unsafe fn llvm_call(
+pub unsafe fn call(
     builder: LLVMBuilderRef,
     function: LLVMValueRef,
     args: &mut [LLVMValueRef],
@@ -55,7 +47,7 @@ pub unsafe fn llvm_call(
     )
 }
 
-pub unsafe fn llvm_define_saturating_div(
+pub unsafe fn define_saturating_div(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -67,7 +59,7 @@ pub unsafe fn llvm_define_saturating_div(
         (Name::new("numerator"), i64_type),
         (Name::new("denominator"), i64_type),
     ];
-    let (function, param_values) = llvm_function_definition(module, fn_name, param_types, i64_type);
+    let (function, param_values) = function_definition(module, fn_name, param_types, i64_type);
     let numerator = param_values[&Name::new("numerator")];
     let denominator = param_values[&Name::new("denominator")];
 
@@ -92,15 +84,15 @@ pub unsafe fn llvm_define_saturating_div(
     LLVMPositionBuilderAtEnd(builder, then_block);
     let llvm_name = llvm_name("tmp_div");
     let sdiv = LLVMBuildSDiv(builder, numerator, denominator, llvm_name.as_ptr());
-    llvm_function_return(builder, sdiv);
+    function_return(builder, sdiv);
 
     LLVMPositionBuilderAtEnd(builder, else_block);
-    llvm_function_return(builder, LLVMConstInt(i64_type, i64::max_value() as u64, 0));
+    function_return(builder, LLVMConstInt(i64_type, i64::max_value() as u64, 0));
 
     function
 }
 
-pub unsafe fn llvm_saturating_div(
+pub unsafe fn saturating_div(
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     numerator: LLVMValueRef,
@@ -110,5 +102,5 @@ pub unsafe fn llvm_saturating_div(
     let saturating_div_name = llvm_name("saturating_div");
     let saturating_div_fn = LLVMGetNamedFunction(module, saturating_div_name.as_ptr());
     let args = &mut [numerator, denominator];
-    llvm_call(builder, saturating_div_fn, args, name)
+    call(builder, saturating_div_fn, args, name)
 }

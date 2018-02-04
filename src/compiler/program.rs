@@ -3,7 +3,7 @@ use llvm::prelude::*;
 use llvm::LLVMIntPredicate;
 use llvm::core::*;
 
-pub unsafe fn llvm_define_input(
+pub unsafe fn define_input(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -23,30 +23,30 @@ pub unsafe fn llvm_define_input(
             .map(|input_name| (Name::new(&format!("{}_ptr", input_name)), i64_ptr_type)),
     );
 
-    let (function, params) = llvm_function_definition(
+    let (function, params) = function_definition(
         module,
         llvm_name("input"),
         params,
         LLVMVoidTypeInContext(ctx),
     );
-    llvm_function_entry(ctx, builder, llvm_name("entry"), function);
+    function_entry(ctx, builder, llvm_name("entry"), function);
 
-    let i64_tmpl = llvm_global_string_ptr(builder, llvm_name("i64_tmpl"), llvm_name("%lld"));
+    let i64_tmpl = global_string_ptr(builder, llvm_name("i64_tmpl"), llvm_name("%lld"));
     for (i, input_name) in inputs.into_iter().enumerate() {
         let input_ptr = LLVMGetParam(function, 2 + i as u32);
-        let argv_el_ptr = llvm_getelement(
+        let argv_el_ptr = getelementptr(
             ctx,
             builder,
             params[&Name::new("argv")],
             1 + i as u64,
             Name::new(&format!("{}_argv_ptr", input_name)).cstring(),
         );
-        let argv_el = llvm_load(
+        let argv_el = load(
             builder,
             argv_el_ptr,
             Name::new(&format!("{}_argv", input_name)).cstring(),
         );
-        llvm_sscanf(
+        sscanf(
             module,
             builder,
             argv_el,
@@ -59,7 +59,7 @@ pub unsafe fn llvm_define_input(
     function
 }
 
-pub unsafe fn llvm_define_output(
+pub unsafe fn define_output(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -73,20 +73,19 @@ pub unsafe fn llvm_define_output(
         .map(|output_name| (Name::new(&format!("{}_ptr", output_name)), i64_ptr_type))
         .collect();
 
-    let (function, params) = llvm_function_definition(
+    let (function, params) = function_definition(
         module,
         llvm_name("output"),
         param_types,
         LLVMVoidTypeInContext(ctx),
     );
-    llvm_function_entry(ctx, builder, llvm_name("entry"), function);
+    function_entry(ctx, builder, llvm_name("entry"), function);
 
-    let i64_line_tmpl =
-        llvm_global_string_ptr(builder, llvm_name("i64_line_tmpl"), llvm_name("%lld\n"));
+    let i64_line_tmpl = global_string_ptr(builder, llvm_name("i64_line_tmpl"), llvm_name("%lld\n"));
     for output_name in outputs {
         let output_ptr = params[&Name::new(&format!("{}_ptr", output_name))];
-        let output = llvm_load(builder, output_ptr, output_name.clone().cstring());
-        llvm_printf(
+        let output = load(builder, output_ptr, output_name.clone().cstring());
+        printf(
             module,
             builder,
             i64_line_tmpl,
@@ -98,7 +97,7 @@ pub unsafe fn llvm_define_output(
     function
 }
 
-pub unsafe fn llvm_define_run(
+pub unsafe fn define_run(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -115,8 +114,8 @@ pub unsafe fn llvm_define_run(
         .map(|param| (Name::new(&format!("{}_ptr", param.name())), i64_ptr_type))
         .collect();
     let (function, param_values) =
-        llvm_function_definition(module, llvm_name("run"), param_types, void_type);
-    llvm_function_entry(ctx, builder, llvm_name("entry"), function);
+        function_definition(module, llvm_name("run"), param_types, void_type);
+    function_entry(ctx, builder, llvm_name("entry"), function);
 
     let mut initialised_vars = HashMap::new();
     for param in &params {
@@ -153,7 +152,7 @@ pub unsafe fn llvm_define_run(
     function
 }
 
-pub unsafe fn llvm_define_main(
+pub unsafe fn define_main(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -171,7 +170,7 @@ pub unsafe fn llvm_define_main(
         (Name::new("argv"), argv_type),
     ];
     let (function, param_values) =
-        llvm_function_definition(module, llvm_name("main"), main_params, i64_type);
+        function_definition(module, llvm_name("main"), main_params, i64_type);
     let argc = param_values[&Name::new("argc")];
     let argv = param_values[&Name::new("argv")];
 
@@ -193,7 +192,7 @@ pub unsafe fn llvm_define_main(
     );
     LLVMBuildCondBr(builder, args_cmp, then_block, else_block);
     LLVMPositionBuilderAtEnd(builder, else_block);
-    let args_cmp_tmpl = llvm_global_string_ptr(
+    let args_cmp_tmpl = global_string_ptr(
         builder,
         llvm_name("args_cmp_tmpl"),
         llvm_name(&format!(
@@ -202,21 +201,21 @@ pub unsafe fn llvm_define_main(
         )),
     );
     let name = llvm_name("args_cmp_sub");
-    llvm_printf(
+    printf(
         module,
         builder,
         args_cmp_tmpl,
         LLVMBuildSub(builder, argc, LLVMConstInt(i64_type, 1, 0), name.as_ptr()),
         llvm_name("args_cmp_printf"),
     );
-    llvm_function_return(builder, LLVMConstInt(i64_type, 1, 0));
+    function_return(builder, LLVMConstInt(i64_type, 1, 0));
 
     LLVMPositionBuilderAtEnd(builder, then_block);
     let mut vars = HashMap::new();
     for param in &params {
         if param.pre_initialised() {
             let var_name = llvm_name(&format!("{}_ptr", param.name().0));
-            let var = llvm_allocate(builder, i64_type, var_name);
+            let var = allocate(builder, i64_type, var_name);
             vars.insert(param.name().clone(), var);
         }
     }
@@ -227,12 +226,12 @@ pub unsafe fn llvm_define_main(
         }
     }
     let input_args = input_args.as_mut_slice();
-    llvm_call(builder, input_function, input_args, llvm_name(""));
+    call(builder, input_function, input_args, llvm_name(""));
 
     for param in &params {
         if !param.pre_initialised() {
             let var_name = llvm_name(&format!("{}_ptr", param.name().0));
-            let var = llvm_allocate(builder, i64_type, var_name);
+            let var = allocate(builder, i64_type, var_name);
             vars.insert(param.name().clone(), var);
         }
     }
@@ -241,7 +240,7 @@ pub unsafe fn llvm_define_main(
         run_args.push(vars[param.name()]);
     }
     let run_args = run_args.as_mut_slice();
-    llvm_call(builder, run_function, run_args, llvm_name(""));
+    call(builder, run_function, run_args, llvm_name(""));
 
     let mut output_args = vec![];
     for param in &params {
@@ -250,8 +249,8 @@ pub unsafe fn llvm_define_main(
         }
     }
     let output_args = output_args.as_mut_slice();
-    llvm_call(builder, output_function, output_args, llvm_name(""));
+    call(builder, output_function, output_args, llvm_name(""));
 
-    llvm_function_return(builder, LLVMConstInt(i64_type, 0, 0));
+    function_return(builder, LLVMConstInt(i64_type, 0, 0));
     function
 }
