@@ -480,33 +480,56 @@ mod tests {
     use rand::thread_rng;
     use quickcheck::{QuickCheck, StdGen};
     use tempfile::NamedTempFile;
+    use std::process::Command;
+    use std::io::{BufRead, BufReader};
+
+    #[derive(Debug, Clone)]
+    struct Testcase {
+        program: Program,
+        inputs: Vec<i64>,
+    }
+
+    impl Arbitrary for Testcase {
+        fn arbitrary<G: Gen>(g: &mut G) -> Testcase {
+            let program = Program::arbitrary(g);
+            let inputs = program.inputs.iter().map(|_| i64::arbitrary(g)).collect();
+            Testcase {
+                program: program,
+                inputs: inputs,
+            }
+        }
+    }
 
     #[test]
     fn it_works() {
         assert_eq!(2 + 2, 4);
     }
 
-    //#[test]
-    fn compiles_successfully_property(program: Program) -> bool {
-        let math = format!("{}", program);
-        eprintln!("{}", math);
+    fn compile_testcase(testcase: Testcase) -> Option<Vec<i64>> {
+        eprintln!("{:?} for {}", testcase.inputs, testcase.program);
+        let math = format!("{}", testcase.program);
         let tempfile = NamedTempFile::new().unwrap();
         compile(
             math.as_bytes(),
             compiler::Emit::Binary(tempfile.path().to_path_buf()),
         ).unwrap();
+        let output = Command::new(tempfile.path())
+            .args(testcase.inputs.iter().map(|i| format!("{}", *i)))
+            .output()
+            .expect("could not invoke compiled program");
+        assert!(output.status.success());
+        let stdout = BufReader::new(output.stdout.as_slice());
+        let outputs: Vec<i64> = stdout
+            .lines()
+            .map(|s| s.unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(outputs.len(), testcase.program.outputs.len());
         drop(tempfile);
-        true
+        Some(outputs)
+    }
 
-        //let inputs: Vec<i64> = (0..program.inputs.len()).map(|n| n as i64 - 3).collect();
-        //let result = execute(&program, &inputs);
-        //if let Ok(ref outputs) = result {
-        //    assert_eq!(outputs.len(), program.outputs.len());
-        //}
-        //if let Err(ref e) = result {
-        //    eprintln!("{:?}", e);
-        //}
-        //result.is_ok()
+    fn compiles_successfully_property(testcase: Testcase) -> bool {
+        compile_testcase(testcase).is_some()
     }
 
     #[test]
@@ -516,7 +539,47 @@ mod tests {
         // exploring potential edgecases.
         for size in 1..11 {
             let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
-            qc.quickcheck(compiles_successfully_property as fn(Program) -> bool);
+            qc.quickcheck(compiles_successfully_property as fn(Testcase) -> bool);
+        }
+    }
+
+    fn interpret_testcase(testcase: Testcase) -> Option<Vec<i64>> {
+        eprintln!("{:?} for {}", testcase.inputs, testcase.program);
+        let math = format!("{}", testcase.program);
+        Some(interpret(math.as_bytes(), &testcase.inputs).unwrap())
+    }
+
+    fn interprets_successfully_property(testcase: Testcase) -> bool {
+        interpret_testcase(testcase).is_some()
+    }
+
+    #[test]
+    fn interprets_successfully() {
+        // QuickCheck's default size creates infeasibly vast statements, and beyond some
+        // point they stop exploring novel code paths. This does a much better job of
+        // exploring potential edgecases.
+        for size in 1..11 {
+            let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
+            qc.quickcheck(interprets_successfully_property as fn(Testcase) -> bool);
+        }
+    }
+
+    fn interprets_and_compiles_the_same_property(testcase: Testcase) -> bool {
+        let interpreted_outputs = interpret_testcase(testcase.clone());
+        eprintln!("interpretation output {:?}", interpreted_outputs);
+        let compiled_outputs = compile_testcase(testcase);
+        eprintln!("compilation output {:?}", compiled_outputs);
+        interpreted_outputs == compiled_outputs
+    }
+
+    #[test]
+    fn interprets_and_compiles_the_same() {
+        // QuickCheck's default size creates infeasibly vast statements, and beyond some
+        // point they stop exploring novel code paths. This does a much better job of
+        // exploring potential edgecases.
+        for size in 1..11 {
+            let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
+            qc.quickcheck(interprets_and_compiles_the_same_property as fn(Testcase) -> bool);
         }
     }
 }
