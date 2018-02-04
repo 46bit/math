@@ -398,12 +398,13 @@ fn arbitrary_operand<G: Gen>(
     if size <= 1 {
         return Operand::I64(i64::arbitrary(g));
     }
-    match g.gen_range(0, 3) {
+    match g.gen_range(0, 4) {
         0 => Operand::I64(i64::arbitrary(g)),
-        1 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
+        1 => Operand::Group(box arbitrary_expression(g, level + 1, vars, fns)),
+        2 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
             .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
             .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
-        2 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
+        3 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
             .map(|&(ref fn_name, params_count)| {
                 Operand::FnApplication(
                     fn_name.clone().clone(),

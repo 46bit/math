@@ -30,6 +30,7 @@ named!(operator<&[u8], Operator>,
 named!(operand<&[u8], Operand>,
   alt_complete!(
     map!(i64, Operand::I64) |
+    map!(group, |inner_expression| Operand::Group(box inner_expression)) |
     map!(variable_substitution, Operand::VarSubstitution) |
     map!(function_application, |t| Operand::FnApplication(t.0, t.1))));
 
@@ -37,6 +38,13 @@ named!(i64<&[u8], i64>,
   map!(
     take_while1!(|b: u8| is_digit(b) || b == b'-'),
     |i| to_str(i).unwrap().parse().unwrap()));
+
+named!(group<&[u8], Expression>,
+  delimited!(
+    tag!("("),
+    call!(expression),
+    tag!(")")
+  ));
 
 named!(variable_substitution<&[u8], Name>,
   do_parse!(

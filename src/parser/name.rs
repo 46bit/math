@@ -23,7 +23,7 @@ named!(pub variable_names<&[u8], Vec<Name>>,
 
 named!(pub function_name<&[u8], Name>,
   map!(
-    take_till!(|b: u8| is_space(b) || b == b'=' || b == b'(' || b == b')' || b == b',' || b == b';'),
+    take_till1!(|b: u8| is_space(b) || b == b'=' || b == b'(' || b == b')' || b == b',' || b == b';'),
     |bytes| Name(to_str(bytes).unwrap())));
 
 pub fn to_str(u8s: &[u8]) -> Result<String, string::FromUtf8Error> {
