@@ -1,0 +1,14 @@
+inputs a;
+addOne = a + 1;
+addMinusOne = a + -1;
+subOne = a - 1;
+subMinusOne = a - -1;
+mulOne = a * 1;
+mulMinusOne = a * -1;
+mulTwo = a * 2;
+mulMinusTwo = a * -2;
+divOne = a / 1;
+divMinusOne = a / -1;
+divTwo = a / 2;
+divMinusTwo = a / -2;
+outputs addOne, addMinusOne, subOne, subMinusOne, mulOne, mulMinusOne, mulTwo, mulMinusTwo, divOne, divMinusOne, divTwo, divMinusTwo;

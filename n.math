@@ -1,0 +1,7 @@
+inputs qwl_h, u, pjv, pgxd;
+u = -2;
+md = pgxd / pjv;
+tck(hqcoh, w, sdapr) = 2 * 4 / -1 / 4 * 4 * 1;
+qhswo = tck(2, -1, -6) * md;
+ny_w = 4;
+outputs md, pjv, qhswo, pgxd, u, qwl_h;

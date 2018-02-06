@@ -44,25 +44,15 @@ impl<'a> ExpressionSynthesiser<'a> {
         lhs: &Expression,
         rhs: &Expression,
     ) -> LLVMValueRef {
+        let module = self.module;
+        let builder = self.builder;
         let lhs = self.synthesise(lhs);
         let rhs = self.synthesise(rhs);
         match operator {
-            Operator::Subtract => {
-                let name = llvm_name("tmp_sub");
-                LLVMBuildSub(self.builder, lhs, rhs, name.as_ptr())
-            }
-            Operator::Add => {
-                let name = llvm_name("tmp_add");
-                LLVMBuildAdd(self.builder, lhs, rhs, name.as_ptr())
-            }
-            Operator::Divide => {
-                let name = llvm_name("tmp_div");
-                saturating_div(self.module, self.builder, lhs, rhs, name)
-            }
-            Operator::Multiply => {
-                let name = llvm_name("tmp_mul");
-                LLVMBuildMul(self.builder, lhs, rhs, name.as_ptr())
-            }
+            Operator::Subtract => saturating_sub(module, builder, lhs, rhs, llvm_name("tmp_sub")),
+            Operator::Add => saturating_add(module, builder, lhs, rhs, llvm_name("tmp_add")),
+            Operator::Divide => saturating_div(module, builder, lhs, rhs, llvm_name("tmp_div")),
+            Operator::Multiply => saturating_mul(module, builder, lhs, rhs, llvm_name("tmp_mul")),
         }
     }
 
