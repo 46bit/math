@@ -243,8 +243,8 @@ pub unsafe fn define_saturating_mul(
     LLVMBuildCondBr(
         builder,
         saturate_cmp,
-        saturate_max_block,
         saturate_min_block,
+        saturate_max_block,
     );
 
     LLVMPositionBuilderAtEnd(builder, saturate_max_block);
@@ -274,10 +274,14 @@ pub unsafe fn define_saturating_div(
 
     let name = llvm_name("entry");
     let entry_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
-    let name = llvm_name("then");
-    let then_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
-    let name = llvm_name("else");
-    let else_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("ok");
+    let ok_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("saturate");
+    let saturate_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("saturate_max");
+    let saturate_max_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("saturate_max");
+    let saturate_min_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
 
     LLVMPositionBuilderAtEnd(builder, entry_block);
     let cmp_name = llvm_name("do_not_divide_by_zero_cmp");
@@ -288,15 +292,44 @@ pub unsafe fn define_saturating_div(
         LLVMConstInt(i64_type, 0, 0),
         cmp_name.as_ptr(),
     );
-    LLVMBuildCondBr(builder, cmp, then_block, else_block);
+    LLVMBuildCondBr(builder, cmp, ok_block, saturate_block);
 
-    LLVMPositionBuilderAtEnd(builder, then_block);
-    let llvm_name = llvm_name("tmp_div");
-    let sdiv = LLVMBuildSDiv(builder, numerator, denominator, llvm_name.as_ptr());
+    LLVMPositionBuilderAtEnd(builder, ok_block);
+    let name = llvm_name("tmp_div");
+    let sdiv = LLVMBuildSDiv(builder, numerator, denominator, name.as_ptr());
     function_return(builder, sdiv);
 
-    LLVMPositionBuilderAtEnd(builder, else_block);
+    LLVMPositionBuilderAtEnd(builder, saturate_block);
+    let lhs_neg_cmp_name = llvm_name("lhs_neg_cmp");
+    let lhs_neg = LLVMBuildICmp(
+        builder,
+        LLVMIntPredicate::LLVMIntSLT,
+        numerator,
+        LLVMConstInt(i64_type, 0, 0),
+        lhs_neg_cmp_name.as_ptr(),
+    );
+    let rhs_neg_cmp_name = llvm_name("rhs_neg_cmp");
+    let rhs_neg = LLVMBuildICmp(
+        builder,
+        LLVMIntPredicate::LLVMIntSLT,
+        denominator,
+        LLVMConstInt(i64_type, 0, 0),
+        rhs_neg_cmp_name.as_ptr(),
+    );
+    let cmp_name = llvm_name("cmp");
+    let saturate_cmp = LLVMBuildXor(builder, lhs_neg, rhs_neg, cmp_name.as_ptr());
+    LLVMBuildCondBr(
+        builder,
+        saturate_cmp,
+        saturate_min_block,
+        saturate_max_block,
+    );
+
+    LLVMPositionBuilderAtEnd(builder, saturate_max_block);
     function_return(builder, LLVMConstInt(i64_type, i64::max_value() as u64, 0));
+
+    LLVMPositionBuilderAtEnd(builder, saturate_min_block);
+    function_return(builder, LLVMConstInt(i64_type, i64::min_value() as u64, 0));
 
     function
 }
