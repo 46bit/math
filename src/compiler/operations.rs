@@ -57,3 +57,58 @@ pub unsafe fn call(
         name.as_ptr(),
     )
 }
+
+pub unsafe fn switch(
+    ctx: LLVMContextRef,
+    module: LLVMModuleRef,
+    builder: LLVMBuilderRef,
+    function: LLVMValueRef,
+    source: LLVMValueRef,
+    matchers: Vec<(Matcher, Expression)>,
+    vars: &HashMap<Name, LLVMValueRef>,
+    functions: &HashMap<Name, LLVMValueRef>,
+) -> LLVMValueRef {
+    let i64_type = LLVMInt64TypeInContext(ctx);
+
+    // Make a new block
+    let matcher_blocks: Vec<LLVMBasicBlockRef> = matchers
+        .iter()
+        .map(|_| {
+            let name = llvm_name("match");
+            LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr())
+        })
+        .collect();
+    let name = llvm_name("match_none");
+    let unmatched_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let name = llvm_name("match_final");
+    let final_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+
+    let name = llvm_name("match_dest");
+    let dest = allocate(builder, i64_type, name);
+
+    // Jump to the new block
+    // Make one new block for each flat_matcher
+
+    let switch = LLVMBuildSwitch(builder, source, unmatched_block, matchers.len() as u32);
+    for (i, &(matcher, _)) in matchers.iter().enumerate() {
+        match matcher {
+            Matcher::Value(value) => {
+                let value_const = LLVMConstInt(i64_type, value as u64, 0);
+                LLVMAddCase(switch, value_const, matcher_blocks[i])
+            }
+        }
+    }
+
+    for (i, (_, expression)) in matchers.into_iter().enumerate() {
+        LLVMPositionBuilderAtEnd(builder, matcher_blocks[i]);
+        let value = synthesise_expression(ctx, module, builder, &expression, &vars, &functions);
+        LLVMBuildStore(builder, value, dest);
+        LLVMBuildBr(builder, final_block);
+    }
+
+    LLVMPositionBuilderAtEnd(builder, unmatched_block);
+    LLVMBuildUnreachable(builder);
+
+    LLVMPositionBuilderAtEnd(builder, final_block);
+    dest
+}

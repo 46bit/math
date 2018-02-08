@@ -381,6 +381,7 @@ pub enum Operand {
     Group(Box<Expression>),
     VarSubstitution(Name),
     FnApplication(Name, Vec<Expression>),
+    Match(Match),
 }
 
 impl fmt::Display for Operand {
@@ -399,6 +400,7 @@ impl fmt::Display for Operand {
                 }
                 write!(f, ")")
             }
+            Operand::Match(ref match_) => write!(f, "{}", match_),
         }
     }
 }
@@ -420,7 +422,7 @@ fn arbitrary_operand<G: Gen>(
     if size <= 1 {
         return Operand::I64(i64::arbitrary(g));
     }
-    match g.gen_range(0, 3) {
+    match g.gen_range(0, 4) {
         0 => Operand::I64(i64::arbitrary(g)),
         1 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
             .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
@@ -435,8 +437,88 @@ fn arbitrary_operand<G: Gen>(
                 )
             })
             .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
+        3 => Operand::Match(arbitrary_match(g, level + 1, vars, fns)),
         _ => unreachable!(),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Match {
+    with: Box<Expression>,
+    clauses: Vec<(Matcher, Expression)>,
+    default: Option<Box<Expression>>,
+}
+
+impl fmt::Display for Match {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "match {} {{ ", self.with)?;
+        for &(match_, expr) in &self.clauses {
+            write!(f, "{} => {}, ", match_, expr)?;
+        }
+        if let Some(default) = self.default {
+            write!(f, "_ => {}, ", default)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl Arbitrary for Match {
+    fn arbitrary<G: Gen>(g: &mut G) -> Match {
+        arbitrary_match(g, 0, &HashSet::new(), &HashMap::new())
+    }
+}
+
+fn arbitrary_match<G: Gen>(
+    g: &mut G,
+    level: usize,
+    vars: &HashSet<Name>,
+    fns: &HashMap<Name, usize>,
+) -> Match {
+    let size = g.size().saturating_sub(level);
+    let clauses = (0..(size + 1))
+        .map(|_| {
+            let matcher = arbitrary_matcher(g, level + 1, vars, fns);
+            let expression = arbitrary_expression(g, level + 1, vars, fns);
+            (matcher, expression)
+        })
+        .collect();
+    let default = match g.gen() {
+        true => Some(box arbitrary_expression(g, level + 1, vars, fns)),
+        false => None,
+    };
+    Match {
+        with: box arbitrary_expression(g, level + 1, vars, fns),
+        clauses: clauses,
+        default: default,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Matcher {
+    Value(i64),
+}
+
+impl fmt::Display for Matcher {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &Matcher::Value(value) => write!(f, "{}", value),
+        }
+    }
+}
+
+impl Arbitrary for Matcher {
+    fn arbitrary<G: Gen>(g: &mut G) -> Matcher {
+        arbitrary_matcher(g, 0, &HashSet::new(), &HashMap::new())
+    }
+}
+
+fn arbitrary_matcher<G: Gen>(
+    g: &mut G,
+    _: usize,
+    _: &HashSet<Name>,
+    _: &HashMap<Name, usize>,
+) -> Matcher {
+    Matcher::Value(i64::arbitrary(g))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
