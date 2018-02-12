@@ -11,8 +11,8 @@ pub unsafe fn define_sscanf(ctx: LLVMContextRef, module: LLVMModuleRef) -> LLVMV
 
     let fn_name = llvm_name("sscanf");
     let param_types = &mut [string_type, string_type, i64_ptr_type];
-    let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 3, 1);
-    LLVMAddFunction(module, fn_name.as_ptr(), fn_type)
+    let fn_type = assert_not_nil(LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 3, 1));
+    assert_not_nil(LLVMAddFunction(module, fn_name.as_ptr(), fn_type))
 }
 
 pub unsafe fn sscanf(
@@ -24,7 +24,7 @@ pub unsafe fn sscanf(
     name: CString,
 ) -> LLVMValueRef {
     let sscanf_name = llvm_name("sscanf");
-    let sscanf_fn = LLVMGetNamedFunction(module, sscanf_name.as_ptr());
+    let sscanf_fn = assert_not_nil(LLVMGetNamedFunction(module, sscanf_name.as_ptr()));
     let args = &mut [string, template, destination];
     call(builder, sscanf_fn, args, name)
 }
@@ -36,8 +36,8 @@ pub unsafe fn define_printf(ctx: LLVMContextRef, module: LLVMModuleRef) -> LLVMV
 
     let fn_name = llvm_name("printf");
     let param_types = &mut [string_type, i64_type];
-    let fn_type = LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 2, 1);
-    LLVMAddFunction(module, fn_name.as_ptr(), fn_type)
+    let fn_type = assert_not_nil(LLVMFunctionType(i32_type, param_types.as_mut_ptr(), 2, 1));
+    assert_not_nil(LLVMAddFunction(module, fn_name.as_ptr(), fn_type))
 }
 
 pub unsafe fn printf(
@@ -48,7 +48,7 @@ pub unsafe fn printf(
     name: CString,
 ) -> LLVMValueRef {
     let printf_name = llvm_name("printf");
-    let printf_fn = LLVMGetNamedFunction(module, printf_name.as_ptr());
+    let printf_fn = assert_not_nil(LLVMGetNamedFunction(module, printf_name.as_ptr()));
     let args = &mut [template, output];
     call(builder, printf_fn, args, name)
 }

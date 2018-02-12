@@ -1,0 +1,5 @@
+inputs i;
+j = 9 + 1;
+a(x) = match x { 1 => 2 };
+k = 7 / 2 * a(3);
+outputs j, k;

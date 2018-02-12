@@ -37,7 +37,7 @@ impl<'a> FunctionSynthesiser<'a> {
     ) -> LLVMValueRef {
         let (function, mut vars) = self.synthesise_fn(name, params);
         self.synthesise_entry(function);
-        self.synthesise_return(returns, &mut vars);
+        self.synthesise_return(function, returns, &mut vars);
         function
     }
 
@@ -56,11 +56,17 @@ impl<'a> FunctionSynthesiser<'a> {
         function_entry(self.ctx, self.builder, llvm_name("entry"), function);
     }
 
-    unsafe fn synthesise_return(&self, returns: &Expression, vars: &HashMap<Name, LLVMValueRef>) {
+    unsafe fn synthesise_return(
+        &self,
+        function: LLVMValueRef,
+        returns: &Expression,
+        vars: &HashMap<Name, LLVMValueRef>,
+    ) {
         let value = synthesise_expression(
             self.ctx,
             self.module,
             self.builder,
+            function,
             returns,
             vars,
             self.functions,
@@ -75,14 +81,14 @@ pub unsafe fn synthesise_fn_application(
     mut args: Vec<LLVMValueRef>,
     fns: &HashMap<Name, LLVMValueRef>,
 ) -> LLVMValueRef {
-    let function = fns.get(&name).unwrap();
+    let function = assert_not_nil(*fns.get(&name).unwrap());
     let fn_name = into_llvm_name(name.clone());
     let args_slice = args.as_mut_slice();
-    LLVMBuildCall(
+    assert_not_nil(LLVMBuildCall(
         builder,
-        *function,
+        function,
         args_slice.as_mut_ptr(),
         args_slice.len() as u32,
         fn_name.as_ptr(),
-    )
+    ))
 }

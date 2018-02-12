@@ -32,7 +32,8 @@ named!(operand<&[u8], Operand>,
     map!(i64, Operand::I64) |
     map!(group, |inner_expression| Operand::Group(box inner_expression)) |
     map!(variable_substitution, Operand::VarSubstitution) |
-    map!(function_application, |t| Operand::FnApplication(t.0, t.1))));
+    map!(function_application, |t| Operand::FnApplication(t.0, t.1)) |
+    map!(match_, |m| Operand::Match(m))));
 
 named!(i64<&[u8], i64>,
   map!(
@@ -59,6 +60,26 @@ named!(function_application<&[u8], (Name, Vec<Expression>)>,
     expressions: map!(opt!(call!(expressions)), Option::unwrap_or_default) >>
     ws!(tag!(")")) >>
     (name, expressions)));
+
+named!(match_<&[u8], Match>,
+  do_parse!(
+    ws!(tag!("match ")) >>
+    with: call!(expression) >>
+    ws!(tag!("{")) >>
+    clauses: call!(match_clauses) >>
+    opt!(ws!(tag!(","))) >>
+    tag!("}") >>
+    (Match {with: box with, clauses: clauses, default: None})));
+
+named!(match_clauses<&[u8], Vec<(Matcher, Expression)>>,
+  separated_list!(ws!(tag!(",")), call!(match_clause)));
+
+named!(match_clause<&[u8], (Matcher, Expression)>,
+  do_parse!(
+    matcher: call!(expression) >>
+    ws!(tag!("=>")) >>
+    value: call!(expression) >>
+    (Matcher::Value(matcher), value)));
 
 #[cfg(test)]
 mod tests {
@@ -226,6 +247,30 @@ mod tests {
                 )
             )
         );
+        assert_eq!(
+            operand(b"match 5 * x { 1 => 2, 3 => 5 }"),
+            as_done(
+                b"",
+                Operand::Match(Match {
+                    with: box Expression::Operation(
+                        Operator::Multiply,
+                        box Expression::Operand(Operand::I64(5)),
+                        box Expression::Operand(Operand::VarSubstitution(as_name("x")))
+                    ),
+                    clauses: vec![
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(1))),
+                            Expression::Operand(Operand::I64(2)),
+                        ),
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(3))),
+                            Expression::Operand(Operand::I64(5)),
+                        ),
+                    ],
+                    default: None,
+                })
+            )
+        );
     }
 
     #[test]
@@ -351,6 +396,80 @@ mod tests {
         assert_eq!(
             function_application(b"f +"),
             IResult::Error(nom::ErrorKind::Tag)
+        );
+    }
+
+    #[test]
+    fn match_test() {
+        assert_eq!(
+            match_(b"match x {}"),
+            as_done(
+                b"",
+                Match {
+                    with: box Expression::Operand(Operand::VarSubstitution(as_name("x"))),
+                    clauses: vec![],
+                    default: None,
+                }
+            )
+        );
+        assert_eq!(
+            match_(b"match x + 5 {}"),
+            as_done(
+                b"",
+                Match {
+                    with: box Expression::Operation(
+                        Operator::Add,
+                        box Expression::Operand(Operand::VarSubstitution(as_name("x"))),
+                        box Expression::Operand(Operand::I64(5))
+                    ),
+                    clauses: vec![],
+                    default: None,
+                }
+            )
+        );
+        assert_eq!(
+            match_(b"match x + 5 {1 => 2}"),
+            as_done(
+                b"",
+                Match {
+                    with: box Expression::Operation(
+                        Operator::Add,
+                        box Expression::Operand(Operand::VarSubstitution(as_name("x"))),
+                        box Expression::Operand(Operand::I64(5))
+                    ),
+                    clauses: vec![
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(1))),
+                            Expression::Operand(Operand::I64(2)),
+                        ),
+                    ],
+                    default: None,
+                }
+            )
+        );
+        assert_eq!(
+            match_(b"match x + 5 { 32 => 64, 33 => 128, }"),
+            as_done(
+                b"",
+                Match {
+                    with: box Expression::Operation(
+                        Operator::Add,
+                        box Expression::Operand(Operand::VarSubstitution(as_name("x"))),
+                        box Expression::Operand(Operand::I64(5))
+                    ),
+                    clauses: vec![
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(32))),
+                            Expression::Operand(Operand::I64(64)),
+                        ),
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(33))),
+                            Expression::Operand(Operand::I64(128)),
+                        ),
+                    ],
+                    default: None,
+                }
+            )
         );
     }
 

@@ -28,7 +28,7 @@ pub unsafe fn define_input(
     );
     let fn_name = llvm_name("input");
     let (function, params) = function_definition(module, fn_name, params, void_type);
-    let argv = params[&Name::new("argv")];
+    let argv = assert_not_nil(params[&Name::new("argv")]);
 
     function_entry(ctx, builder, llvm_name("entry"), function);
     for (i, input_name) in inputs.into_iter().enumerate() {
@@ -36,11 +36,11 @@ pub unsafe fn define_input(
         let argv_el = getelement(ctx, builder, argv, 1 + i as u64, argv_el_name);
 
         let sscanf_name = Name::new(&format!("{}_sscanf", input_name)).cstring();
-        let input_ptr = LLVMGetParam(function, 2 + i as u32);
+        let input_ptr = assert_not_nil(LLVMGetParam(function, 2 + i as u32));
         sscanf(module, builder, argv_el, i64_tmpl, input_ptr, sscanf_name);
     }
 
-    LLVMBuildRetVoid(builder);
+    assert_not_nil(LLVMBuildRetVoid(builder));
     function
 }
 
@@ -70,7 +70,7 @@ pub unsafe fn define_output(
         let printf_name = Name::new(&format!("{}_printf", output_name)).cstring();
         printf(module, builder, i64_line_tmpl, output, printf_name);
     }
-    LLVMBuildRetVoid(builder);
+    assert_not_nil(LLVMBuildRetVoid(builder));
     function
 }
 
@@ -97,7 +97,7 @@ pub unsafe fn define_run(
     let mut vars = HashMap::new();
     for param in &params {
         if param.pre_initialised() {
-            let value = param_values[&Name::new(&format!("{}_ptr", param.name()))];
+            let value = assert_not_nil(param_values[&Name::new(&format!("{}_ptr", param.name()))]);
             vars.insert(param.name().clone(), value);
         }
     }
@@ -112,11 +112,19 @@ pub unsafe fn define_run(
                 vars.insert(var_name.clone(), var);
             }
         }
-        let value = synthesise_expression(ctx, module, builder, expression, &vars, &functions);
-        LLVMBuildStore(builder, value, vars[var_name]);
+        let value = synthesise_expression(
+            ctx,
+            module,
+            builder,
+            function,
+            expression,
+            &vars,
+            &functions,
+        );
+        assert_not_nil(LLVMBuildStore(builder, value, vars[var_name]));
     }
 
-    LLVMBuildRetVoid(builder);
+    assert_not_nil(LLVMBuildRetVoid(builder));
     function
 }
 
@@ -140,26 +148,26 @@ pub unsafe fn define_main(
     ];
     let (function, param_values) =
         function_definition(module, llvm_name("main"), main_params, i64_type);
-    let argc = param_values[&Name::new("argc")];
-    let argv = param_values[&Name::new("argv")];
+    let argc = assert_not_nil(param_values[&Name::new("argc")]);
+    let argv = assert_not_nil(param_values[&Name::new("argv")]);
 
     let name = llvm_name("entry");
-    let entry_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let entry_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
     let name = llvm_name("then");
-    let then_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let then_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
     let name = llvm_name("else");
-    let else_block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let else_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
 
     LLVMPositionBuilderAtEnd(builder, entry_block);
     let args_cmp_name = llvm_name("args_cmp");
-    let args_cmp = LLVMBuildICmp(
+    let args_cmp = assert_not_nil(LLVMBuildICmp(
         builder,
         LLVMIntPredicate::LLVMIntEQ,
         LLVMConstInt(i64_type, input_count + 1, 0),
         argc,
         args_cmp_name.as_ptr(),
-    );
-    LLVMBuildCondBr(builder, args_cmp, then_block, else_block);
+    ));
+    assert_not_nil(LLVMBuildCondBr(builder, args_cmp, then_block, else_block));
     LLVMPositionBuilderAtEnd(builder, else_block);
     let args_cmp_tmpl = global_string_ptr(
         builder,

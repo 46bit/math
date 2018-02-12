@@ -422,22 +422,22 @@ fn arbitrary_operand<G: Gen>(
     if size <= 1 {
         return Operand::I64(i64::arbitrary(g));
     }
-    match g.gen_range(0, 4) {
+    match g.gen_range(0, 1) {
         0 => Operand::I64(i64::arbitrary(g)),
-        1 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
-            .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
-            .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
-        2 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
-            .map(|&(ref fn_name, params_count)| {
-                Operand::FnApplication(
-                    fn_name.clone().clone(),
-                    (0..*params_count)
-                        .map(|_| arbitrary_expression(g, level + 1, vars, fns))
-                        .collect(),
-                )
-            })
-            .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
-        3 => Operand::Match(arbitrary_match(g, level + 1, vars, fns)),
+        //1 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
+        //    .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
+        //    .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
+        //2 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
+        //    .map(|&(ref fn_name, params_count)| {
+        //        Operand::FnApplication(
+        //            fn_name.clone().clone(),
+        //            (0..*params_count)
+        //                .map(|_| arbitrary_expression(g, level + 1, vars, fns))
+        //                .collect(),
+        //        )
+        //    })
+        //    .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
+        //3 => Operand::Match(arbitrary_match(g, level + 1, vars, fns)),
         _ => unreachable!(),
     }
 }
@@ -452,10 +452,10 @@ pub struct Match {
 impl fmt::Display for Match {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "match {} {{ ", self.with)?;
-        for &(match_, expr) in &self.clauses {
+        for &(ref match_, ref expr) in &self.clauses {
             write!(f, "{} => {}, ", match_, expr)?;
         }
-        if let Some(default) = self.default {
+        if let Some(ref default) = self.default {
             write!(f, "_ => {}, ", default)?;
         }
         write!(f, "}}")
@@ -495,13 +495,13 @@ fn arbitrary_match<G: Gen>(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Matcher {
-    Value(i64),
+    Value(Expression),
 }
 
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Matcher::Value(value) => write!(f, "{}", value),
+            &Matcher::Value(ref expression) => write!(f, "{}", expression),
         }
     }
 }
@@ -514,11 +514,11 @@ impl Arbitrary for Matcher {
 
 fn arbitrary_matcher<G: Gen>(
     g: &mut G,
-    _: usize,
-    _: &HashSet<Name>,
-    _: &HashMap<Name, usize>,
+    level: usize,
+    vars: &HashSet<Name>,
+    fns: &HashMap<Name, usize>,
 ) -> Matcher {
-    Matcher::Value(i64::arbitrary(g))
+    Matcher::Value(arbitrary_expression(g, level + 1, vars, fns))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

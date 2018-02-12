@@ -7,6 +7,7 @@ pub unsafe fn synthesise_expression(
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
+    function: LLVMValueRef,
     expression: &Expression,
     vars: &HashMap<Name, LLVMValueRef>,
     fns: &HashMap<Name, LLVMValueRef>,
@@ -15,6 +16,7 @@ pub unsafe fn synthesise_expression(
         ctx: ctx,
         module: module,
         builder: builder,
+        function: function,
         vars: vars,
         fns: fns,
     }.synthesise(expression)
@@ -24,6 +26,7 @@ struct ExpressionSynthesiser<'a> {
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
+    function: LLVMValueRef,
     vars: &'a HashMap<Name, LLVMValueRef>,
     fns: &'a HashMap<Name, LLVMValueRef>,
 }
@@ -64,12 +67,12 @@ impl<'a> ExpressionSynthesiser<'a> {
             &Operand::Group(ref expression) => self.synthesise(expression),
             &Operand::VarSubstitution(ref name) => {
                 let var = self.vars[&name];
-                let var_type = LLVMTypeOf(var);
+                let var_type = assert_not_nil(LLVMTypeOf(var));
                 if var_type == i64_type {
                     var
                 } else if var_type == i64_ptr_type {
                     let name = into_llvm_name(name.clone());
-                    LLVMBuildLoad(self.builder, var, name.as_ptr())
+                    assert_not_nil(LLVMBuildLoad(self.builder, var, name.as_ptr()))
                 } else {
                     unimplemented!();
                 }
@@ -80,6 +83,95 @@ impl<'a> ExpressionSynthesiser<'a> {
                 args.iter().map(|e| self.synthesise(e)).collect(),
                 self.fns,
             ),
+            &Operand::Match(ref match_) => synthesise_match(
+                self.ctx,
+                self.module,
+                self.builder,
+                self.function,
+                self.synthesise(&match_.with),
+                &match_.clauses,
+                &match_.default,
+                self.vars,
+                self.fns,
+            ),
         }
     }
+}
+
+pub unsafe fn synthesise_match(
+    ctx: LLVMContextRef,
+    module: LLVMModuleRef,
+    builder: LLVMBuilderRef,
+    function: LLVMValueRef,
+    with: LLVMValueRef,
+    matchers: &Vec<(Matcher, Expression)>,
+    default: &Option<Box<Expression>>,
+    vars: &HashMap<Name, LLVMValueRef>,
+    functions: &HashMap<Name, LLVMValueRef>,
+) -> LLVMValueRef {
+    let i64_type = LLVMInt64TypeInContext(ctx);
+
+    // Make a new block
+    let matcher_blocks: Vec<LLVMBasicBlockRef> = matchers
+        .iter()
+        .map(|_| {
+            let name = llvm_name("match");
+            assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()))
+        })
+        .collect();
+    let name = llvm_name("match_none");
+    let unmatched_block =
+        assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
+    let name = llvm_name("match_final");
+    let final_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
+
+    let name = llvm_name("match_dest");
+    let dest = allocate(builder, i64_type, name);
+
+    // Jump to the new block
+    // Make one new block for each flat_matcher
+
+    let switch = assert_not_nil(LLVMBuildSwitch(
+        builder,
+        with,
+        unmatched_block,
+        matchers.len() as u32,
+    ));
+    for (i, &(ref matcher, _)) in matchers.iter().enumerate() {
+        match matcher {
+            &Matcher::Value(ref expression) => {
+                let value = synthesise_expression(
+                    ctx,
+                    module,
+                    builder,
+                    function,
+                    expression,
+                    vars,
+                    functions,
+                );
+                LLVMAddCase(switch, value, matcher_blocks[i]);
+            }
+        }
+    }
+
+    for (i, &(_, ref expression)) in matchers.into_iter().enumerate() {
+        LLVMPositionBuilderAtEnd(builder, matcher_blocks[i]);
+        let value = synthesise_expression(
+            ctx,
+            module,
+            builder,
+            function,
+            &expression,
+            &vars,
+            &functions,
+        );
+        assert_not_nil(LLVMBuildStore(builder, value, dest));
+        assert_not_nil(LLVMBuildBr(builder, final_block));
+    }
+
+    LLVMPositionBuilderAtEnd(builder, unmatched_block);
+    assert_not_nil(LLVMBuildUnreachable(builder));
+
+    LLVMPositionBuilderAtEnd(builder, final_block);
+    dest
 }

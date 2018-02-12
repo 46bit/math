@@ -64,9 +64,10 @@ pub unsafe fn compile(program: &Program, emit: Emit) -> Result<String, Error> {
 }
 
 unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String, Error> {
-    let ctx = LLVMContextCreate();
-    let module = LLVMModuleCreateWithName(b"module\0".as_ptr() as *const _);
-    let builder = LLVMCreateBuilderInContext(ctx);
+    let ctx = assert_not_nil(LLVMContextCreate());
+    let name = llvm_name("module");
+    let module = assert_not_nil(LLVMModuleCreateWithName(name.as_ptr()));
+    let builder = assert_not_nil(LLVMCreateBuilderInContext(ctx));
 
     define_sscanf(ctx, module);
     define_printf(ctx, module);
@@ -136,15 +137,15 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
 }
 
 unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
-    let llvm_ctx = LLVMContextCreate();
+    let llvm_ctx = assert_not_nil(LLVMContextCreate());
     let llvm_ir_str = llvm_name(llvm_ir);
     let llvm_ir_buffer_name = llvm_name("llvm_ir_buffer");
-    let llvm_ir_buffer = LLVMCreateMemoryBufferWithMemoryRange(
+    let llvm_ir_buffer = assert_not_nil(LLVMCreateMemoryBufferWithMemoryRange(
         llvm_ir_str.as_ptr(),
         llvm_ir_str.as_bytes().len(),
         llvm_ir_buffer_name.as_ptr(),
         0,
-    );
+    ));
     let mut llvm_module = ptr::null_mut();
     let mut errors = ptr::null_mut();
     let return_code = llvm::ir_reader::LLVMParseIRInContext(
@@ -162,7 +163,7 @@ unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
     llvm::target::LLVM_InitializeNativeAsmPrinter();
     llvm::target::LLVM_InitializeNativeAsmParser();
 
-    let llvm_triple_s = llvm::target_machine::LLVMGetDefaultTargetTriple();
+    let llvm_triple_s = assert_not_nil(llvm::target_machine::LLVMGetDefaultTargetTriple());
     let llvm_triple = CStr::from_ptr(llvm_triple_s);
     let mut llvm_target = ptr::null_mut();
     assert_eq!(
@@ -174,7 +175,7 @@ unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
         0
     );
 
-    let llvm_target_machine = llvm::target_machine::LLVMCreateTargetMachine(
+    let llvm_target_machine = assert_not_nil(llvm::target_machine::LLVMCreateTargetMachine(
         llvm_target,
         llvm_triple.as_ptr(),
         ptr::null(),
@@ -182,8 +183,7 @@ unsafe fn objectify(llvm_ir: &String, object_path: &Path) -> Result<(), Error> {
         llvm::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
         llvm::target_machine::LLVMRelocMode::LLVMRelocDefault,
         llvm::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
-    );
-    assert_ne!(llvm_target_machine, ptr::null_mut());
+    ));
 
     let mut llvm_mem_buf: LLVMMemoryBufferRef = ptr::null_mut();
     assert_eq!(
@@ -237,6 +237,11 @@ fn into_llvm_name(name: Name) -> CString {
     llvm_name(name.0.as_str())
 }
 
+fn assert_not_nil<T>(mutref: *mut T) -> *mut T {
+    assert_ne!(mutref, ptr::null_mut());
+    mutref
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,7 +251,11 @@ mod tests {
 
     fn synthesises_successfully_property(program: Program) -> bool {
         eprintln!("{}\n---", program);
-        unsafe { synthesise(&program, None).is_ok() }
+        unsafe {
+            let s = synthesise(&program, None);
+            eprintln!("{:?}", s);
+            s.is_ok()
+        }
     }
 
     #[test]

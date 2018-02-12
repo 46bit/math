@@ -10,7 +10,7 @@ pub unsafe fn function_definition(
     return_type: LLVMTypeRef,
 ) -> (LLVMValueRef, HashMap<Name, LLVMValueRef>) {
     let mut param_types: Vec<_> = params.iter().map(|&(_, param_type)| param_type).collect();
-    let function = LLVMAddFunction(
+    let function = assert_not_nil(LLVMAddFunction(
         module,
         name.as_ptr(),
         LLVMFunctionType(
@@ -19,10 +19,10 @@ pub unsafe fn function_definition(
             param_types.len() as u32,
             0,
         ),
-    );
+    ));
     let mut param_values = HashMap::new();
     for (i, (param_name, _)) in params.into_iter().enumerate() {
-        let param = LLVMGetParam(function, i as u32);
+        let param = assert_not_nil(LLVMGetParam(function, i as u32));
         let llvm_param_name = param_name.clone().cstring();
         LLVMSetValueName(param, llvm_param_name.as_ptr());
         param_values.insert(param_name.clone(), param);
@@ -36,10 +36,10 @@ pub unsafe fn function_entry(
     name: CString,
     function: LLVMValueRef,
 ) {
-    let block = LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr());
+    let block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
     LLVMPositionBuilderAtEnd(builder, block);
 }
 
 pub unsafe fn function_return(builder: LLVMBuilderRef, value: LLVMValueRef) {
-    LLVMBuildRet(builder, value);
+    assert_not_nil(LLVMBuildRet(builder, value));
 }

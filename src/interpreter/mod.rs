@@ -15,6 +15,7 @@ pub enum Error {
         inputs_count: usize,
         provided_count: usize,
     },
+    UnmatchedValue,
 }
 
 pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<Vec<i64>, Error> {
@@ -106,6 +107,7 @@ impl Interpreter {
             &Operand::Group(ref expr) => self.expression(expr),
             &Operand::VarSubstitution(ref name) => self.variable(name),
             &Operand::FnApplication(ref name, ref args) => self.function_call(name, args),
+            &Operand::Match(ref match_) => self.match_(match_),
         }
     }
 
@@ -140,6 +142,27 @@ impl Interpreter {
         let result = self.expression(&expr);
         self.variables = backup_of_global_variables;
         return result;
+    }
+
+    fn match_(&mut self, match_: &Match) -> Result<i64, Error> {
+        // with: Box<Expression>
+        // clauses: Vec<(Matcher, Expression)>
+        // default: Option<Box<Expression>>
+        let with = self.expression(&match_.with)?;
+        for &(ref matcher, ref expression) in &match_.clauses {
+            match matcher {
+                &Matcher::Value(ref value) => {
+                    let value = self.expression(value)?;
+                    if with == value {
+                        return self.expression(expression);
+                    }
+                }
+            }
+        }
+        if let Some(ref default_expression) = match_.default {
+            return self.expression(default_expression);
+        }
+        Err(Error::UnmatchedValue)
     }
 }
 
