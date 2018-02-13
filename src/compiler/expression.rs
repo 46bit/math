@@ -180,7 +180,9 @@ pub unsafe fn synthesise_match(
         &functions,
     );
     assert_not_nil(LLVMBuildStore(builder, value, dest));
+    assert_not_nil(LLVMBuildBr(builder, final_block));
 
     LLVMPositionBuilderAtEnd(builder, final_block);
-    dest
+    let name = llvm_name("tmp_match");
+    assert_not_nil(LLVMBuildLoad(builder, dest, name.as_ptr()))
 }
