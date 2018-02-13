@@ -105,7 +105,7 @@ pub unsafe fn synthesise_match(
     function: LLVMValueRef,
     with: LLVMValueRef,
     matchers: &Vec<(Matcher, Expression)>,
-    default: &Option<Box<Expression>>,
+    default: &Expression,
     vars: &HashMap<Name, LLVMValueRef>,
     functions: &HashMap<Name, LLVMValueRef>,
 ) -> LLVMValueRef {
@@ -170,7 +170,16 @@ pub unsafe fn synthesise_match(
     }
 
     LLVMPositionBuilderAtEnd(builder, unmatched_block);
-    assert_not_nil(LLVMBuildUnreachable(builder));
+    let value = synthesise_expression(
+        ctx,
+        module,
+        builder,
+        function,
+        default,
+        &vars,
+        &functions,
+    );
+    assert_not_nil(LLVMBuildStore(builder, value, dest));
 
     LLVMPositionBuilderAtEnd(builder, final_block);
     dest

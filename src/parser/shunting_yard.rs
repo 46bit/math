@@ -48,7 +48,8 @@ impl ShuntingYard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quickcheck::quickcheck;
+    use rand::thread_rng;
+    use quickcheck::{QuickCheck, StdGen};
 
     #[test]
     fn lone_operand_test() {
@@ -171,6 +172,12 @@ mod tests {
 
     #[test]
     fn shunts_correctly() {
-        quickcheck(shunts_correctly_prop as fn(Expression) -> bool);
+        // QuickCheck's default size creates infeasibly vast statements, and beyond some
+        // point they stop exploring novel code paths. This does a much better job of
+        // exploring potential edgecases.
+        for size in 1..11 {
+            let mut qc = QuickCheck::new().gen(StdGen::new(thread_rng(), size));
+            qc.quickcheck(shunts_correctly_prop as fn(Expression) -> bool);
+        }
     }
 }

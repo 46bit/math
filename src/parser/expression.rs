@@ -1,5 +1,6 @@
 use super::*;
 use self::shunting_yard::*;
+use std::str;
 use nom::is_digit;
 
 named!(pub expressions<&[u8], Vec<Expression>>,
@@ -38,7 +39,7 @@ named!(operand<&[u8], Operand>,
 named!(i64<&[u8], i64>,
   map!(
     take_while1!(|b: u8| is_digit(b) || b == b'-'),
-    |i| to_str(i).unwrap().parse().unwrap()));
+    |i| str::from_utf8(i).unwrap().parse().unwrap()));
 
 named!(group<&[u8], Expression>,
   delimited!(
@@ -49,42 +50,82 @@ named!(group<&[u8], Expression>,
 
 named!(variable_substitution<&[u8], Name>,
   do_parse!(
-    name: call!(variable_name) >>
+    name: call!(name) >>
     ws!(peek!(none_of!("("))) >>
     (name)));
 
 named!(function_application<&[u8], (Name, Vec<Expression>)>,
   do_parse!(
-    name: call!(function_name) >>
+    name: call!(name) >>
     ws!(tag!("(")) >>
     expressions: map!(opt!(call!(expressions)), Option::unwrap_or_default) >>
     ws!(tag!(")")) >>
     (name, expressions)));
 
 named!(match_<&[u8], Match>,
-  do_parse!(
-    ws!(tag!("match ")) >>
-    with: call!(expression) >>
-    ws!(tag!("{")) >>
-    clauses: call!(match_clauses) >>
-    opt!(ws!(tag!(","))) >>
-    tag!("}") >>
-    (Match {with: box with, clauses: clauses, default: None})));
+  map!(
+    do_parse!(
+      ws!(tag!("match ")) >>
+      with: call!(expression) >>
+      ws!(tag!("{")) >>
+      clauses: call!(match_clauses) >>
+      opt!(ws!(tag!(","))) >>
+      ws!(tag!("}")) >>
+      (with, clauses)),
+    |(with, (matchers, default))| Match::new(with, matchers, default)));
 
-named!(match_clauses<&[u8], Vec<(Matcher, Expression)>>,
-  separated_list!(ws!(tag!(",")), call!(match_clause)));
+named!(match_clauses<&[u8], (Vec<(Matcher, Expression)>, Expression)>,
+  map_opt!(
+    separated_list!(ws!(tag!(",")), call!(match_clause)),
+    |clauses| {
+        default_clause_of(&clauses).map(|default| (matchers_of(clauses), default))
+    }
+  ));
 
-named!(match_clause<&[u8], (Matcher, Expression)>,
+named!(match_clause<&[u8], (Clause, Expression)>,
   do_parse!(
-    matcher: call!(expression) >>
+    clause: alt!(
+        map!(call!(expression), |e| Clause::Matcher(Matcher::Value(e))) |
+        map!(ws!(tag!("_")), |_| Clause::Default_)
+    ) >>
     ws!(tag!("=>")) >>
     value: call!(expression) >>
-    (Matcher::Value(matcher), value)));
+    (clause, value)));
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Clause {
+    Matcher(Matcher),
+    Default_,
+}
+
+fn default_clause_of(clauses: &Vec<(Clause, Expression)>) -> Option<Expression> {
+    let mut default = None;
+    for &(ref clause, ref expression) in clauses {
+        if clause == &Clause::Default_ {
+            if default.is_none() {
+                default = Some(expression.clone());
+            } else {
+                return None;
+            }
+        }
+    }
+    default
+}
+
+fn matchers_of(clauses: Vec<(Clause, Expression)>) -> Vec<(Matcher, Expression)> {
+    let mut matchers = vec![];
+    for (clause, expression) in clauses {
+        if let Clause::Matcher(matcher) = clause {
+            matchers.push((matcher, expression));
+        }
+    }
+    matchers
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nom::{self, IResult};
+    use nom::{self, ErrorKind, IResult};
 
     #[test]
     fn expression_test() {
@@ -248,7 +289,7 @@ mod tests {
             )
         );
         assert_eq!(
-            operand(b"match 5 * x { 1 => 2, 3 => 5 }"),
+            operand(b"match 5 * x { 1 => 2, 3 => 5, _ => 11 }"),
             as_done(
                 b"",
                 Operand::Match(Match {
@@ -267,7 +308,7 @@ mod tests {
                             Expression::Operand(Operand::I64(5)),
                         ),
                     ],
-                    default: None,
+                    default: box Expression::Operand(Operand::I64(11)),
                 })
             )
         );
@@ -401,19 +442,21 @@ mod tests {
 
     #[test]
     fn match_test() {
+        assert_eq!(match_(b"match x {}"), IResult::Error(ErrorKind::MapOpt));
         assert_eq!(
-            match_(b"match x {}"),
+            match_(b"match x { _ => -1 }"),
             as_done(
                 b"",
                 Match {
                     with: box Expression::Operand(Operand::VarSubstitution(as_name("x"))),
                     clauses: vec![],
-                    default: None,
+                    default: box Expression::Operand(Operand::I64(-1)),
                 }
             )
         );
+        assert_eq!(match_(b"match x + 5 {}"), IResult::Error(ErrorKind::MapOpt));
         assert_eq!(
-            match_(b"match x + 5 {}"),
+            match_(b"match x + 5 { _ => y }"),
             as_done(
                 b"",
                 Match {
@@ -423,12 +466,16 @@ mod tests {
                         box Expression::Operand(Operand::I64(5))
                     ),
                     clauses: vec![],
-                    default: None,
+                    default: box Expression::Operand(Operand::VarSubstitution(as_name("y"))),
                 }
             )
         );
         assert_eq!(
             match_(b"match x + 5 {1 => 2}"),
+            IResult::Error(ErrorKind::MapOpt)
+        );
+        assert_eq!(
+            match_(b"match x + 5 {1 => 2, _ => zz }"),
             as_done(
                 b"",
                 Match {
@@ -443,12 +490,12 @@ mod tests {
                             Expression::Operand(Operand::I64(2)),
                         ),
                     ],
-                    default: None,
+                    default: box Expression::Operand(Operand::VarSubstitution(as_name("zz"))),
                 }
             )
         );
         assert_eq!(
-            match_(b"match x + 5 { 32 => 64, 33 => 128, }"),
+            match_(b"match x + 5 { 32 => 64, 33 => 128, _ => -9, }"),
             as_done(
                 b"",
                 Match {
@@ -467,7 +514,31 @@ mod tests {
                             Expression::Operand(Operand::I64(128)),
                         ),
                     ],
-                    default: None,
+                    default: box Expression::Operand(Operand::I64(-9)),
+                }
+            )
+        );
+        assert_eq!(
+            match_(b"match 5 * x { 1 => 2, 3 => 5, _ => y }"),
+            as_done(
+                b"",
+                Match {
+                    with: box Expression::Operation(
+                        Operator::Multiply,
+                        box Expression::Operand(Operand::I64(5)),
+                        box Expression::Operand(Operand::VarSubstitution(as_name("x")))
+                    ),
+                    clauses: vec![
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(1))),
+                            Expression::Operand(Operand::I64(2)),
+                        ),
+                        (
+                            Matcher::Value(Expression::Operand(Operand::I64(3))),
+                            Expression::Operand(Operand::I64(5)),
+                        ),
+                    ],
+                    default: box Expression::Operand(Operand::VarSubstitution(as_name("y"))),
                 }
             )
         );

@@ -15,7 +15,6 @@ pub enum Error {
         inputs_count: usize,
         provided_count: usize,
     },
-    UnmatchedValue,
 }
 
 pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<Vec<i64>, Error> {
@@ -159,10 +158,7 @@ impl Interpreter {
                 }
             }
         }
-        if let Some(ref default_expression) = match_.default {
-            return self.expression(default_expression);
-        }
-        Err(Error::UnmatchedValue)
+        self.expression(&match_.default)
     }
 }
 

@@ -14,7 +14,7 @@ named!(pub statement<&[u8], Statement>,
 
 named!(variable_assignment<&[u8], (Name, Expression)>,
   do_parse!(
-    name: call!(variable_name) >>
+    name: call!(name) >>
     ws!(tag!("=")) >>
     expression: call!(expression) >>
     peek!(ws!(tag!(";"))) >>
@@ -22,9 +22,9 @@ named!(variable_assignment<&[u8], (Name, Expression)>,
 
 named!(function_definition<&[u8], (Name, Vec<Name>, Expression)>,
   do_parse!(
-    name: call!(function_name) >>
+    name: call!(name) >>
     ws!(tag!("(")) >>
-    parameters: call!(variable_names) >>
+    parameters: call!(names) >>
     ws!(tag!(")")) >>
     ws!(tag!("=")) >>
     expression: call!(expression) >>

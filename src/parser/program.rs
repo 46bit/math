@@ -4,7 +4,7 @@ use super::super::*;
 named!(pub inputs<&[u8], Vec<Name>>,
   do_parse!(
     ws!(tag!("inputs")) >>
-    input_names: call!(variable_names) >>
+    input_names: call!(names) >>
     ws!(tag!(";")) >>
     (input_names)
   ));
@@ -12,7 +12,7 @@ named!(pub inputs<&[u8], Vec<Name>>,
 named!(pub outputs<&[u8], Vec<Name>>,
   do_parse!(
     ws!(tag!("outputs")) >>
-    output_names: call!(variable_names) >>
+    output_names: call!(names) >>
     ws!(tag!(";")) >>
     (output_names)
   ));

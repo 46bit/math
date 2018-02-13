@@ -20,6 +20,10 @@ use std::ffi::CString;
 use std::collections::{HashMap, HashSet};
 use quickcheck::{Arbitrary, Gen};
 
+const RESERVED_NAMES: &'static [&'static str] = &["inputs", "outputs", "if", "match", "_"];
+// FIXME: We really should check characters, not bytes.
+const RESERVED_NAME_BYTES: &'static [u8] = &[b'=', b'(', b')', b'{', b'}', b',', b';'];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     ParseError(parser::Error),
@@ -66,14 +70,23 @@ impl Arbitrary for Name {
 
 fn arbitrary_name<G: Gen>(g: &mut G, level: usize) -> Name {
     let size = g.size().saturating_sub(level).max(1);
-    let len = 0..g.gen_range(1, size + 1);
-    Name(len.map(|i| {
-        let chars = match i {
-            0 => "abcdefghijklmnopqrstuvwxyz",
-            _ => "abcdefghijklmnopqrstuvwxyz_",
-        };
-        *g.choose(chars.as_bytes()).unwrap() as char
-    }).collect())
+    let len = g.gen_range(1, size + 1);
+    let mut name: String;
+    loop {
+        name = (0..len)
+            .map(|i| {
+                let chars = match i {
+                    0 => "abcdefghijklmnopqrstuvwxyz",
+                    _ => "abcdefghijklmnopqrstuvwxyz_",
+                };
+                *g.choose(chars.as_bytes()).unwrap() as char
+            })
+            .collect();
+        if !RESERVED_NAMES.contains(&name.as_str()) {
+            break;
+        }
+    }
+    Name(name)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -422,22 +435,22 @@ fn arbitrary_operand<G: Gen>(
     if size <= 1 {
         return Operand::I64(i64::arbitrary(g));
     }
-    match g.gen_range(0, 1) {
+    match g.gen_range(0, 4) {
         0 => Operand::I64(i64::arbitrary(g)),
-        //1 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
-        //    .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
-        //    .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
-        //2 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
-        //    .map(|&(ref fn_name, params_count)| {
-        //        Operand::FnApplication(
-        //            fn_name.clone().clone(),
-        //            (0..*params_count)
-        //                .map(|_| arbitrary_expression(g, level + 1, vars, fns))
-        //                .collect(),
-        //        )
-        //    })
-        //    .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
-        //3 => Operand::Match(arbitrary_match(g, level + 1, vars, fns)),
+        1 => g.choose(vars.iter().collect::<Vec<_>>().as_slice())
+            .map(|var_name| Operand::VarSubstitution(var_name.clone().clone()))
+            .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
+        2 => g.choose(fns.iter().collect::<Vec<_>>().as_slice())
+            .map(|&(ref fn_name, params_count)| {
+                Operand::FnApplication(
+                    fn_name.clone().clone(),
+                    (0..*params_count)
+                        .map(|_| arbitrary_expression(g, level + 1, vars, fns))
+                        .collect(),
+                )
+            })
+            .unwrap_or_else(|| Operand::I64(i64::arbitrary(g))),
+        3 => Operand::Match(arbitrary_match(g, level + 1, vars, fns)),
         _ => unreachable!(),
     }
 }
@@ -446,7 +459,21 @@ fn arbitrary_operand<G: Gen>(
 pub struct Match {
     with: Box<Expression>,
     clauses: Vec<(Matcher, Expression)>,
-    default: Option<Box<Expression>>,
+    default: Box<Expression>,
+}
+
+impl Match {
+    pub fn new(
+        with: Expression,
+        matchers: Vec<(Matcher, Expression)>,
+        default: Expression,
+    ) -> Match {
+        Match {
+            with: box with,
+            clauses: matchers,
+            default: box default,
+        }
+    }
 }
 
 impl fmt::Display for Match {
@@ -455,9 +482,7 @@ impl fmt::Display for Match {
         for &(ref match_, ref expr) in &self.clauses {
             write!(f, "{} => {}, ", match_, expr)?;
         }
-        if let Some(ref default) = self.default {
-            write!(f, "_ => {}, ", default)?;
-        }
+        write!(f, "_ => {}, ", self.default)?;
         write!(f, "}}")
     }
 }
@@ -482,15 +507,9 @@ fn arbitrary_match<G: Gen>(
             (matcher, expression)
         })
         .collect();
-    let default = match g.gen() {
-        true => Some(box arbitrary_expression(g, level + 1, vars, fns)),
-        false => None,
-    };
-    Match {
-        with: box arbitrary_expression(g, level + 1, vars, fns),
-        clauses: clauses,
-        default: default,
-    }
+    let with = arbitrary_expression(g, level + 1, vars, fns);
+    let default = arbitrary_expression(g, level + 1, vars, fns);
+    Match::new(with, clauses, default)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

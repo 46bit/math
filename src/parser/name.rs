@@ -1,16 +1,23 @@
 use super::super::*;
-use std::string;
+use std::str;
 use nom::is_space;
 
-named!(pub variable_name<&[u8], Name>,
+named!(pub name<&[u8], Name>,
   map!(
-    take_till1!(|b: u8| is_space(b) || b == b'=' || b == b'(' || b == b')' || b == b',' || b == b';'),
-    |bytes| Name(to_str(bytes).unwrap())));
+    verify!(
+      map!(
+        take_till1!(|b: u8| is_space(b) || RESERVED_NAME_BYTES.contains(&b)),
+        |bytes| str::from_utf8(&bytes).unwrap()
+      ),
+      |s| !RESERVED_NAMES.contains(&s)
+    ),
+    |s| Name::new(s)
+  ));
 
-named!(pub variable_names<&[u8], Vec<Name>>,
+named!(pub names<&[u8], Vec<Name>>,
   do_parse!(
-    first_variable: opt!(call!(variable_name)) >>
-    other_variables: many0!(preceded!(ws!(tag!(",")), call!(variable_name))) >>
+    first_variable: opt!(call!(name)) >>
+    other_variables: many0!(preceded!(ws!(tag!(",")), call!(name))) >>
     ({
       if first_variable.is_none() {
         vec![]
@@ -20,12 +27,3 @@ named!(pub variable_names<&[u8], Vec<Name>>,
         v
       }
     })));
-
-named!(pub function_name<&[u8], Name>,
-  map!(
-    take_till1!(|b: u8| is_space(b) || b == b'=' || b == b'(' || b == b')' || b == b',' || b == b';'),
-    |bytes| Name(to_str(bytes).unwrap())));
-
-pub fn to_str(u8s: &[u8]) -> Result<String, string::FromUtf8Error> {
-    String::from_utf8(u8s.to_vec())
-}
