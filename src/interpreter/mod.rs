@@ -22,9 +22,13 @@ pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<Vec<i64>, Error> 
     interpreter.run(&program, inputs)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function(Vec<Name>, Expression, HashMap<Name, Function>);
+
+#[derive(Debug, Clone)]
 pub struct Interpreter {
     pub variables: HashMap<Name, i64>,
-    pub functions: HashMap<Name, (Vec<Name>, Expression)>,
+    pub functions: HashMap<Name, Function>,
 }
 
 impl Interpreter {
@@ -51,7 +55,9 @@ impl Interpreter {
 
         let mut outputs = Vec::new();
         for output in program.outputs.iter() {
-            outputs.push(self.variable(output)?);
+            let variables = self.variables.clone();
+            let variable = self.variable(output, &variables)?;
+            outputs.push(variable);
         }
         Ok(outputs)
     }
@@ -59,22 +65,29 @@ impl Interpreter {
     pub fn statement(&mut self, statement: &Statement) -> Result<(), Error> {
         match statement {
             &Statement::VarAssignment(ref name, ref expr) => {
-                let expr_value = self.expression(expr)?;
+                let variables = self.variables.clone();
+                let functions = self.functions.clone();
+                let expr_value = self.expression(expr, &variables, &functions)?;
                 self.variables.insert(name.clone(), expr_value);
             }
             &Statement::FnDefinition(ref name, ref params, ref expr) => {
-                self.functions
-                    .insert(name.clone(), (params.clone(), expr.clone()));
+                let function = Function(params.clone(), expr.clone(), self.functions.clone());
+                self.functions.insert(name.clone(), function);
             }
         }
         Ok(())
     }
 
-    fn expression(&mut self, expr: &Expression) -> Result<i64, Error> {
+    fn expression(
+        &mut self,
+        expr: &Expression,
+        variables: &HashMap<Name, i64>,
+        functions: &HashMap<Name, Function>,
+    ) -> Result<i64, Error> {
         match expr {
-            &Expression::Operand(ref operand) => self.operand(operand),
+            &Expression::Operand(ref operand) => self.operand(operand, variables, functions),
             &Expression::Operation(ref operator, ref expr1, ref expr2) => {
-                self.operation(operator, expr1, expr2)
+                self.operation(operator, expr1, expr2, variables, functions)
             }
         }
     }
@@ -84,9 +97,11 @@ impl Interpreter {
         operator: &Operator,
         operand1: &Expression,
         operand2: &Expression,
+        variables: &HashMap<Name, i64>,
+        functions: &HashMap<Name, Function>,
     ) -> Result<i64, Error> {
-        let value1 = self.expression(operand1)?;
-        let value2 = self.expression(operand2)?;
+        let value1 = self.expression(operand1, variables, functions)?;
+        let value2 = self.expression(operand2, variables, functions)?;
         Ok(match operator {
             &Operator::Add => value1.saturating_add(value2),
             &Operator::Subtract => value1.saturating_sub(value2),
@@ -105,25 +120,38 @@ impl Interpreter {
         })
     }
 
-    fn operand(&mut self, operand: &Operand) -> Result<i64, Error> {
+    fn operand(
+        &mut self,
+        operand: &Operand,
+        variables: &HashMap<Name, i64>,
+        functions: &HashMap<Name, Function>,
+    ) -> Result<i64, Error> {
         match operand {
             &Operand::I64(value) => Ok(value),
-            &Operand::Group(ref expr) => self.expression(expr),
-            &Operand::VarSubstitution(ref name) => self.variable(name),
-            &Operand::FnApplication(ref name, ref args) => self.function_call(name, args),
-            &Operand::Match(ref match_) => self.match_(match_),
+            &Operand::Group(ref expr) => self.expression(expr, variables, functions),
+            &Operand::VarSubstitution(ref name) => self.variable(name, variables),
+            &Operand::FnApplication(ref name, ref args) => {
+                self.function_call(name, args, variables, functions)
+            }
+            &Operand::Match(ref match_) => self.match_(match_, variables, functions),
         }
     }
 
-    fn variable(&mut self, name: &Name) -> Result<i64, Error> {
-        self.variables
+    fn variable(&mut self, name: &Name, variables: &HashMap<Name, i64>) -> Result<i64, Error> {
+        variables
             .get(&name)
             .cloned()
             .ok_or_else(|| Error::UnknownVariable(name.clone()))
     }
 
-    fn function_call(&mut self, name: &Name, arg_exprs: &Vec<Expression>) -> Result<i64, Error> {
-        let (ref params, ref expr) = self.functions
+    fn function_call(
+        &mut self,
+        name: &Name,
+        arg_exprs: &Vec<Expression>,
+        caller_variables: &HashMap<Name, i64>,
+        caller_functions: &HashMap<Name, Function>,
+    ) -> Result<i64, Error> {
+        let Function(ref params, ref expr, ref functions) = caller_functions
             .get(&name)
             .ok_or_else(|| Error::UnknownFunction(name.clone()))?
             .clone();
@@ -138,32 +166,34 @@ impl Interpreter {
 
         let mut args = Vec::new();
         for arg_expr in arg_exprs {
-            args.push(self.expression(arg_expr)?);
+            args.push(self.expression(arg_expr, caller_variables, caller_functions)?);
         }
-
-        let backup_of_global_variables = self.variables.clone();
-        self.variables = params.iter().cloned().zip(args.into_iter()).collect();
-        let result = self.expression(&expr);
-        self.variables = backup_of_global_variables;
+        let variables = params.iter().cloned().zip(args.into_iter()).collect();
+        let result = self.expression(expr, &variables, functions);
         return result;
     }
 
-    fn match_(&mut self, match_: &Match) -> Result<i64, Error> {
+    fn match_(
+        &mut self,
+        match_: &Match,
+        variables: &HashMap<Name, i64>,
+        functions: &HashMap<Name, Function>,
+    ) -> Result<i64, Error> {
         // with: Box<Expression>
         // clauses: Vec<(Matcher, Expression)>
         // default: Option<Box<Expression>>
-        let with = self.expression(&match_.with)?;
+        let with = self.expression(&match_.with, variables, functions)?;
         for &(ref matcher, ref expression) in &match_.clauses {
             match matcher {
                 &Matcher::Value(ref value) => {
-                    let value = self.expression(value)?;
+                    let value = self.expression(value, variables, functions)?;
                     if with == value {
-                        return self.expression(expression);
+                        return self.expression(expression, variables, functions);
                     }
                 }
             }
         }
-        self.expression(&match_.default)
+        self.expression(&match_.default, variables, functions)
     }
 }
 
@@ -250,9 +280,22 @@ mod tests {
         i.statement(&statement(b"f(a) = a;").unwrap().1).unwrap();
         i.statement(&statement(b"f(a) = 3 * a;").unwrap().1)
             .unwrap();
+        let mut functions = HashMap::new();
+        functions.insert(
+            as_name("f"),
+            Function(
+                vec![as_name("a")],
+                Expression::Operand(Operand::VarSubstitution(as_name("a"))),
+                HashMap::new(),
+            ),
+        );
         assert_eq!(
             i.functions[&as_name("f")],
-            (vec![as_name("a")], expression(b"3 * a;").unwrap().1,)
+            Function(
+                vec![as_name("a")],
+                expression(b"3 * a;").unwrap().1,
+                functions
+            )
         );
     }
 
@@ -262,11 +305,21 @@ mod tests {
         i.statement(&statement(b"f(a) = a;").unwrap().1).unwrap();
         i.statement(&statement(b"f(a, b) = a + b;").unwrap().1)
             .unwrap();
+        let mut functions = HashMap::new();
+        functions.insert(
+            as_name("f"),
+            Function(
+                vec![as_name("a")],
+                Expression::Operand(Operand::VarSubstitution(as_name("a"))),
+                HashMap::new(),
+            ),
+        );
         assert_eq!(
             i.functions[&as_name("f")],
-            (
+            Function(
                 vec![as_name("a"), as_name("b")],
                 expression(b"a + b;").unwrap().1,
+                functions
             )
         );
     }
@@ -302,22 +355,6 @@ mod tests {
     }
 
     #[test]
-    fn fn_args_cannot_use_previous_fn_definition() {
-        let mut i = Interpreter::new();
-        i.statement(&statement(b"f(a) = a;").unwrap().1).unwrap();
-        i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1)
-            .unwrap();
-        assert_eq!(
-            i.statement(&statement(b"i = f(1, 2);").unwrap().1),
-            Err(Error::IncorrectArgumentCount {
-                name: as_name("f"),
-                params_count: 2,
-                provided_count: 1,
-            })
-        );
-    }
-
-    #[test]
     fn fn_args_use_current_external_variables() {
         let mut i = Interpreter::new();
         i.statement(&statement(b"x = 1;").unwrap().1).unwrap();
@@ -325,6 +362,48 @@ mod tests {
         i.statement(&statement(b"y = f(x);").unwrap().1).unwrap();
         i.statement(&statement(b"x = 2;").unwrap().1).unwrap();
         assert_eq!(i.variables[&as_name("y")], 1);
+    }
+
+    #[test]
+    fn fn_evaluates_functions_from_when_it_was_defined_1() {
+        let mut i = Interpreter::new();
+        i.statement(&statement(b"f(a, b) = a * b;").unwrap().1)
+            .unwrap();
+        println!("{:?}", i.functions);
+        i.statement(&statement(b"g(x) = f(x, x);").unwrap().1)
+            .unwrap();
+        println!("{:?}", i.functions);
+        i.statement(&statement(b"f(a, b) = a + b;").unwrap().1)
+            .unwrap();
+        println!("{:?}", i.functions);
+        i.statement(&statement(b"n = g(3);").unwrap().1).unwrap();
+        println!("{:?}", i.functions);
+        assert_eq!(i.variables[&as_name("n")], 9);
+    }
+
+    #[test]
+    fn fn_evaluates_functions_from_when_it_was_defined_2() {
+        let mut i = Interpreter::new();
+        i.statement(&statement(b"f(a, b) = a + b;").unwrap().1)
+            .unwrap();
+        println!("{:?}", i.functions);
+        i.statement(&statement(b"g(x) = f(x, x + 1);").unwrap().1)
+            .unwrap();
+        println!("{:?}", i.functions);
+        i.statement(&statement(b"f(a) = a;").unwrap().1).unwrap();
+        println!("{:?}", i.functions);
+        i.statement(&statement(b"n = g(1);").unwrap().1).unwrap();
+        println!("{:?}", i.functions);
+        assert_eq!(i.variables[&as_name("n")], 3);
+    }
+
+    #[test]
+    fn fn_can_call_previous_definition_of_same_name() {
+        let mut i = Interpreter::new();
+        i.statement(&statement(b"f(a) = a * 5;").unwrap().1).unwrap();
+        i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1).unwrap();
+        i.statement(&statement(b"i = f(2, 1);").unwrap().1).unwrap();
+        assert_eq!(i.variables[&as_name("i")], 11);
     }
 
     #[test]
