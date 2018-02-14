@@ -87,13 +87,16 @@ impl Interpreter {
     ) -> Result<i64, Error> {
         let value1 = self.expression(operand1)?;
         let value2 = self.expression(operand2)?;
-        // FIXME: Document these behaviours or raise errors
         Ok(match operator {
             &Operator::Add => value1.saturating_add(value2),
             &Operator::Subtract => value1.saturating_sub(value2),
             &Operator::Multiply => value1.saturating_mul(value2),
             &Operator::Divide => if value2 == 0 {
-                i64::max_value()
+                if value1 < 0 {
+                    i64::min_value()
+                } else {
+                    i64::max_value()
+                }
             } else {
                 value1.wrapping_div(value2)
             },
