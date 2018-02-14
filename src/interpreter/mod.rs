@@ -97,6 +97,8 @@ impl Interpreter {
                 } else {
                     i64::max_value()
                 }
+            } else if value1 == i64::min_value() && value2 == -1 {
+                i64::max_value()
             } else {
                 value1.wrapping_div(value2)
             },
