@@ -1,6 +1,7 @@
 use super::*;
 use llvm::prelude::*;
 use llvm::core::*;
+use llvm::LLVMIntPredicate;
 use std::collections::HashMap;
 
 pub unsafe fn synthesise_expression(
@@ -111,75 +112,62 @@ pub unsafe fn synthesise_match(
 ) -> LLVMValueRef {
     let i64_type = LLVMInt64TypeInContext(ctx);
 
-    // Make a new block
-    let matcher_blocks: Vec<LLVMBasicBlockRef> = matchers
-        .iter()
-        .map(|_| {
-            let name = llvm_name("match");
-            assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()))
-        })
-        .collect();
-    let name = llvm_name("match_none");
-    let unmatched_block =
-        assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
-    let name = llvm_name("match_final");
-    let final_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
-
     let name = llvm_name("match_dest");
     let dest = allocate(builder, i64_type, name);
 
-    // Jump to the new block
-    // Make one new block for each flat_matcher
+    let name = llvm_name("match_final");
+    let final_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
 
-    let switch = assert_not_nil(LLVMBuildSwitch(
-        builder,
-        with,
-        unmatched_block,
-        matchers.len() as u32,
-    ));
-    for (i, &(ref matcher, _)) in matchers.iter().enumerate() {
+    for &(ref matcher, ref expression) in matchers {
+        let name = llvm_name("match_assignment");
+        let assignment_block =
+            assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
+        let name = llvm_name("match_cmp");
+        let cmp_block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
+
         match matcher {
-            &Matcher::Value(ref expression) => {
-                let value = synthesise_expression(
+            &Matcher::Value(ref cmp_expression) => {
+                // Evaluate matcher expression.
+                let cmp_value = synthesise_expression(
                     ctx,
                     module,
                     builder,
                     function,
-                    expression,
+                    cmp_expression,
                     vars,
                     functions,
                 );
-                LLVMAddCase(switch, value, matcher_blocks[i]);
+                let cmp_name = llvm_name("cmp");
+                let cmp = assert_not_nil(LLVMBuildICmp(
+                    builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    with,
+                    cmp_value,
+                    cmp_name.as_ptr(),
+                ));
+                assert_not_nil(LLVMBuildCondBr(builder, cmp, assignment_block, cmp_block));
             }
         }
-    }
 
-    for (i, &(_, ref expression)) in matchers.into_iter().enumerate() {
-        LLVMPositionBuilderAtEnd(builder, matcher_blocks[i]);
+        LLVMPositionBuilderAtEnd(builder, assignment_block);
         let value = synthesise_expression(
             ctx,
             module,
             builder,
             function,
-            &expression,
+            expression,
             &vars,
             &functions,
         );
         assert_not_nil(LLVMBuildStore(builder, value, dest));
         assert_not_nil(LLVMBuildBr(builder, final_block));
+
+        LLVMPositionBuilderAtEnd(builder, cmp_block);
     }
 
-    LLVMPositionBuilderAtEnd(builder, unmatched_block);
-    let value = synthesise_expression(
-        ctx,
-        module,
-        builder,
-        function,
-        default,
-        &vars,
-        &functions,
-    );
-    assert_not_nil(LLVMBuildStore(builder, value, dest));
+    let default_value =
+        synthesise_expression(ctx, module, builder, function, default, &vars, &functions);
+    assert_not_nil(LLVMBuildStore(builder, default_value, dest));
     assert_not_nil(LLVMBuildBr(builder, final_block));
 
     LLVMPositionBuilderAtEnd(builder, final_block);

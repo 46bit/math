@@ -500,9 +500,16 @@ fn arbitrary_match<G: Gen>(
     fns: &HashMap<Name, usize>,
 ) -> Match {
     let size = g.size().saturating_sub(level);
-    let clauses = (0..(size + 1))
-        .map(|_| {
-            let matcher = arbitrary_matcher(g, level + 1, vars, fns);
+    let mut matchers = vec![];
+    for _ in 0..(size + 1) {
+        let matcher = arbitrary_matcher(g, level + 1, vars, fns);
+        if !matchers.contains(&matcher) {
+            matchers.push(matcher);
+        }
+    }
+    let clauses = matchers
+        .into_iter()
+        .map(|matcher| {
             let expression = arbitrary_expression(g, level + 1, vars, fns);
             (matcher, expression)
         })
@@ -582,7 +589,7 @@ mod tests {
     use quickcheck::{QuickCheck, StdGen};
     use tempfile::NamedTempFile;
     use std::process::Command;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Write};
 
     #[derive(Debug, Clone)]
     struct Testcase {
@@ -606,31 +613,39 @@ mod tests {
         assert_eq!(2 + 2, 4);
     }
 
-    fn compile_testcase(testcase: Testcase) -> Option<Vec<i64>> {
+    fn compile_and_run_testcase(testcase: Testcase) -> Option<Vec<i64>> {
         eprintln!("{:?} for {}", testcase.inputs, testcase.program);
         let math = format!("{}", testcase.program);
-        let tempfile = NamedTempFile::new().unwrap();
-        compile(
-            math.as_bytes(),
-            compiler::Emit::Binary(tempfile.path().to_path_buf()),
-        ).unwrap();
-        let output = Command::new(tempfile.path())
+        let mut math_tempfile = NamedTempFile::new().unwrap();
+        math_tempfile.write_all(math.as_bytes()).unwrap();
+
+        let binary_tempfile = NamedTempFile::new().unwrap();
+        let compile_output = Command::new("target/debug/mathc")
+            .arg(math_tempfile.path())
+            .arg(binary_tempfile.path())
+            .output()
+            .expect("could not invoke compiled program");
+        drop(math_tempfile);
+        assert!(compile_output.status.success());
+
+        let run_output = Command::new(binary_tempfile.path())
             .args(testcase.inputs.iter().map(|i| format!("{}", *i)))
             .output()
             .expect("could not invoke compiled program");
-        assert!(output.status.success());
-        let stdout = BufReader::new(output.stdout.as_slice());
+        drop(binary_tempfile);
+        assert!(run_output.status.success());
+
+        let stdout = BufReader::new(run_output.stdout.as_slice());
         let outputs: Vec<i64> = stdout
             .lines()
             .map(|s| s.unwrap().parse().unwrap())
             .collect();
         assert_eq!(outputs.len(), testcase.program.outputs.len());
-        drop(tempfile);
         Some(outputs)
     }
 
     fn compiles_successfully_property(testcase: Testcase) -> bool {
-        compile_testcase(testcase).is_some()
+        compile_and_run_testcase(testcase).is_some()
     }
 
     #[test]
@@ -668,7 +683,7 @@ mod tests {
     fn interprets_and_compiles_the_same_property(testcase: Testcase) -> bool {
         let interpreted_outputs = interpret_testcase(testcase.clone());
         eprintln!("interpretation output {:?}", interpreted_outputs);
-        let compiled_outputs = compile_testcase(testcase);
+        let compiled_outputs = compile_and_run_testcase(testcase);
         eprintln!("compilation output {:?}", compiled_outputs);
         interpreted_outputs == compiled_outputs
     }

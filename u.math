@@ -1,0 +1,7 @@
+inputs sjlf;
+ghslc() = 2 + 1 - -4 + 1;
+imsh = sjlf;
+dy = 2;
+gop(mek) = match 4 { -5 => -1, -5 => -4, _ => 3, };
+azl(hcupo, lx) = 1 + 4 - 2 - -2;
+outputs dy, sjlf, imsh;

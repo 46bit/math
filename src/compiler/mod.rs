@@ -71,10 +71,10 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
 
     define_sscanf(ctx, module);
     define_printf(ctx, module);
-    define_saturating_div(ctx, module, builder);
     define_saturating_add(ctx, module, builder);
     define_saturating_sub(ctx, module, builder);
     define_saturating_mul(ctx, module, builder);
+    define_saturating_div(ctx, module, builder);
 
     let input_function = define_input(ctx, module, builder, program.inputs.clone());
     let output_function = define_output(ctx, module, builder, program.outputs.clone());

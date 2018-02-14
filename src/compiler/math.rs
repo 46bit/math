@@ -333,26 +333,56 @@ pub unsafe fn define_saturating_div(
     let name = llvm_name("saturate");
     let saturate_block =
         assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
+    let name = llvm_name("saturate_min");
+    let saturate_min_block =
+        assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
     let name = llvm_name("saturate_max");
     let saturate_max_block =
         assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
-    let name = llvm_name("saturate_max");
-    let saturate_min_block =
-        assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
 
     LLVMPositionBuilderAtEnd(builder, entry_block);
-    let cmp_name = llvm_name("do_not_divide_by_zero_cmp");
-    let cmp = assert_not_nil(LLVMBuildICmp(
+    let zero_cmp_name = llvm_name("denominator_is_zero");
+    let zero_cmp = assert_not_nil(LLVMBuildICmp(
         builder,
-        LLVMIntPredicate::LLVMIntNE,
+        LLVMIntPredicate::LLVMIntEQ,
         denominator,
         LLVMConstInt(i64_type, 0, 0),
+        zero_cmp_name.as_ptr(),
+    ));
+    let lhs_is_min_cmp_name = llvm_name("numerator_is_min");
+    let lhs_is_min_cmp = assert_not_nil(LLVMBuildICmp(
+        builder,
+        LLVMIntPredicate::LLVMIntEQ,
+        numerator,
+        LLVMConstInt(i64_type, i64::min_value() as u64, 0),
+        lhs_is_min_cmp_name.as_ptr(),
+    ));
+    let rhs_is_minus1_cmp_name = llvm_name("denominator_is_minus_1");
+    let rhs_is_minus1_cmp = assert_not_nil(LLVMBuildICmp(
+        builder,
+        LLVMIntPredicate::LLVMIntEQ,
+        denominator,
+        LLVMConstInt(i64_type, (-1i64) as u64, 0),
+        rhs_is_minus1_cmp_name.as_ptr(),
+    ));
+    let overflow_from_min_cmp_name = llvm_name("wrapping");
+    let overflow_from_min_cmp = assert_not_nil(LLVMBuildAnd(
+        builder,
+        lhs_is_min_cmp,
+        rhs_is_minus1_cmp,
+        overflow_from_min_cmp_name.as_ptr(),
+    ));
+    let cmp_name = llvm_name("overflowing");
+    let cmp = assert_not_nil(LLVMBuildOr(
+        builder,
+        zero_cmp,
+        overflow_from_min_cmp,
         cmp_name.as_ptr(),
     ));
-    assert_not_nil(LLVMBuildCondBr(builder, cmp, ok_block, saturate_block));
+    assert_not_nil(LLVMBuildCondBr(builder, cmp, saturate_block, ok_block));
 
     LLVMPositionBuilderAtEnd(builder, ok_block);
-    let name = llvm_name("tmp_div");
+    let name = llvm_name("div");
     let sdiv = assert_not_nil(LLVMBuildSDiv(
         builder,
         numerator,
@@ -362,7 +392,7 @@ pub unsafe fn define_saturating_div(
     function_return(builder, sdiv);
 
     LLVMPositionBuilderAtEnd(builder, saturate_block);
-    let lhs_neg_cmp_name = llvm_name("lhs_neg_cmp");
+    let lhs_neg_cmp_name = llvm_name("numerator_is_negative");
     let lhs_neg = assert_not_nil(LLVMBuildICmp(
         builder,
         LLVMIntPredicate::LLVMIntSLT,
@@ -370,7 +400,7 @@ pub unsafe fn define_saturating_div(
         LLVMConstInt(i64_type, 0, 0),
         lhs_neg_cmp_name.as_ptr(),
     ));
-    let rhs_neg_cmp_name = llvm_name("rhs_neg_cmp");
+    let rhs_neg_cmp_name = llvm_name("denominator_is_negative");
     let rhs_neg = assert_not_nil(LLVMBuildICmp(
         builder,
         LLVMIntPredicate::LLVMIntSLT,
@@ -378,7 +408,7 @@ pub unsafe fn define_saturating_div(
         LLVMConstInt(i64_type, 0, 0),
         rhs_neg_cmp_name.as_ptr(),
     ));
-    let cmp_name = llvm_name("cmp");
+    let cmp_name = llvm_name("saturating_to_min");
     let saturate_cmp = assert_not_nil(LLVMBuildXor(builder, lhs_neg, rhs_neg, cmp_name.as_ptr()));
     assert_not_nil(LLVMBuildCondBr(
         builder,
@@ -387,11 +417,11 @@ pub unsafe fn define_saturating_div(
         saturate_max_block,
     ));
 
-    LLVMPositionBuilderAtEnd(builder, saturate_max_block);
-    function_return(builder, LLVMConstInt(i64_type, i64::max_value() as u64, 0));
-
     LLVMPositionBuilderAtEnd(builder, saturate_min_block);
     function_return(builder, LLVMConstInt(i64_type, i64::min_value() as u64, 0));
+
+    LLVMPositionBuilderAtEnd(builder, saturate_max_block);
+    function_return(builder, LLVMConstInt(i64_type, i64::max_value() as u64, 0));
 
     function
 }

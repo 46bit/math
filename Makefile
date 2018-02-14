@@ -2,6 +2,7 @@
 
 .PHONY: test
 test: ## run the testsuite
+	cargo build --bin mathc
 	cargo test -- --test-threads=1
 
 .PHONY: clean
