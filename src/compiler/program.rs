@@ -16,16 +16,16 @@ pub unsafe fn define_input(
     let void_type = LLVMVoidTypeInContext(ctx);
     let i64_tmpl = global_string_ptr(builder, llvm_name("i64_tmpl"), llvm_name("%lld"));
 
+    let input_ptrs = inputs
+        .clone()
+        .into_iter()
+        .map(|input_name| Name::new(&format!("{}_ptr", input_name)))
+        .zip(iter::repeat(i64_ptr_type));
     let mut params = vec![
         (Name::new("argc"), i64_type),
         (Name::new("argv"), argv_type),
     ];
-    params.extend(
-        inputs
-            .iter()
-            .map(|input_name| Name::new(&format!("{}_ptr", input_name)))
-            .zip(iter::repeat(i64_ptr_type)),
-    );
+    params.extend(input_ptrs);
     let fn_name = llvm_name("input");
     let (function, params) = function_definition(module, fn_name, params, void_type);
     let argv = assert_not_nil(params[&Name::new("argv")]);
