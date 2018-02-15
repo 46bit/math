@@ -79,8 +79,7 @@ pub unsafe fn define_run(
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     params: Vec<Param>,
-    assigns: Vec<(Name, Expression)>,
-    functions: &HashMap<Name, LLVMValueRef>,
+    assigns: Vec<(Name, Expression, HashMap<Name, LLVMValueRef>)>,
 ) -> LLVMValueRef {
     let void_type = LLVMVoidTypeInContext(ctx);
     let i64_type = LLVMInt64TypeInContext(ctx);
@@ -103,7 +102,7 @@ pub unsafe fn define_run(
     }
 
     function_entry(ctx, builder, llvm_name("entry"), function);
-    for &(ref var_name, ref expression) in &assigns {
+    for &(ref var_name, ref expression, ref functions) in &assigns {
         if !vars.contains_key(var_name) {
             if let Some(param_value) = param_values.get(&Name::new(&format!("{}_ptr", var_name))) {
                 vars.insert(var_name.clone(), *param_value);
@@ -112,15 +111,8 @@ pub unsafe fn define_run(
                 vars.insert(var_name.clone(), var);
             }
         }
-        let value = synthesise_expression(
-            ctx,
-            module,
-            builder,
-            function,
-            expression,
-            &vars,
-            &functions,
-        );
+        let value =
+            synthesise_expression(ctx, module, builder, function, expression, &vars, functions);
         assert_not_nil(LLVMBuildStore(builder, value, vars[var_name]));
     }
 

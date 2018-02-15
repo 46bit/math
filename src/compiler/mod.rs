@@ -79,36 +79,25 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     let input_function = define_input(ctx, module, builder, program.inputs.clone());
     let output_function = define_output(ctx, module, builder, program.outputs.clone());
 
-    let mut defines = vec![];
+    let mut functions = HashMap::new();
     let mut assigns = vec![];
     let mut assign_set = HashSet::new();
     for statement in &program.statements.0 {
         match statement {
             &Statement::FnDefinition(ref name, ref params, ref expr) => {
-                defines.push((name.clone(), params.clone(), expr.clone()));
+                let function =
+                    synthesise_function(ctx, module, builder, name, params, expr, &functions);
+                functions.insert(name.clone(), function);
             }
             &Statement::VarAssignment(ref name, ref expression) => {
-                assigns.push((name.clone(), expression.clone()));
+                assigns.push((name.clone(), expression.clone(), functions.clone()));
                 assign_set.insert(name.clone());
             }
         }
     }
 
-    let mut functions = HashMap::new();
-    for (name, params, expr) in defines {
-        let function = synthesise_function(ctx, module, builder, &name, &params, &expr, &functions);
-        functions.insert(name.clone(), function);
-    }
-
     let run_params = classify_parameters(&program.inputs, &program.outputs, assign_set)?;
-    let run_function = define_run(
-        ctx,
-        module,
-        builder,
-        run_params.clone(),
-        assigns,
-        &functions,
-    );
+    let run_function = define_run(ctx, module, builder, run_params.clone(), assigns);
     define_main(
         ctx,
         module,

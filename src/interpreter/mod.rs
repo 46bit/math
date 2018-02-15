@@ -400,8 +400,10 @@ mod tests {
     #[test]
     fn fn_can_call_previous_definition_of_same_name() {
         let mut i = Interpreter::new();
-        i.statement(&statement(b"f(a) = a * 5;").unwrap().1).unwrap();
-        i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1).unwrap();
+        i.statement(&statement(b"f(a) = a * 5;").unwrap().1)
+            .unwrap();
+        i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1)
+            .unwrap();
         i.statement(&statement(b"i = f(2, 1);").unwrap().1).unwrap();
         assert_eq!(i.variables[&as_name("i")], 11);
     }
