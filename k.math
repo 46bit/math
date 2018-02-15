@@ -1,5 +1,0 @@
-inputs x, i, x;
-s(i, n) = 2;
-kn(xvp, sf) = -3;
-a() = 2;
-outputs x, i;

@@ -72,6 +72,18 @@ mod tests {
         parse_one(b"f(a) = a * 3;").unwrap();
     }
 
+    #[test]
+    fn rejects_duplicate_input_names() {
+        parse(
+            b"inputs x, i, x;
+s(i, n) = 2;
+kn(xvp, sf) = -3;
+a() = 2;
+outputs x, i;
+",
+        ).unwrap_err();
+    }
+
     fn parses_correctly_prop(input: Program) -> bool {
         format!("{}", parse(format!("{}", input).as_bytes()).unwrap()) == format!("{}", input)
     }

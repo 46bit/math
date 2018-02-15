@@ -624,16 +624,31 @@ mod tests {
             .arg(math_tempfile.path())
             .arg(binary_tempfile.path())
             .output()
-            .expect("could not invoke compiled program");
-        drop(math_tempfile);
+            .expect("could not compile program");
         assert!(compile_output.status.success());
+        drop(math_tempfile);
 
-        let run_output = Command::new(binary_tempfile.path())
+        // Workaround `Text file busy` Travis errors
+        let binary_temppath = &format!("{}_2", binary_tempfile.path().to_str().unwrap());
+        let cp_output = Command::new("cp")
+            .arg(binary_tempfile.path())
+            .arg(binary_temppath)
+            .output()
+            .expect("could not cp program");
+        assert!(cp_output.status.success());
+        drop(binary_tempfile);
+
+        let run_output = Command::new(binary_temppath)
             .args(testcase.inputs.iter().map(|i| format!("{}", *i)))
             .output()
             .expect("could not invoke compiled program");
-        drop(binary_tempfile);
         assert!(run_output.status.success());
+
+        let rm_output = Command::new("rm")
+            .arg(binary_temppath)
+            .output()
+            .expect("could not rm program");
+        assert!(rm_output.status.success());
 
         let stdout = BufReader::new(run_output.stdout.as_slice());
         let outputs: Vec<i64> = stdout

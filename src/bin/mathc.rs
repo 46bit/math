@@ -9,7 +9,7 @@ fn main() {
     args.next().unwrap();
     let in_path = args.next().unwrap();
     let out_path = args.next().unwrap();
-    println!("Compiling {} into {}", in_path, out_path);
+    eprintln!("Compiling {} into {}", in_path, out_path);
 
     let mut in_file = File::open(in_path).unwrap();
     let mut in_ = String::new();
