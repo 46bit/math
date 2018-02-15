@@ -195,7 +195,7 @@ pub unsafe fn define_main(
         }
     }
     let input_args = input_args.as_mut_slice();
-    call(builder, input_function, input_args, llvm_name(""));
+    function_call(builder, input_function, input_args, llvm_name(""));
 
     for param in &params {
         if !param.pre_initialised() {
@@ -209,7 +209,7 @@ pub unsafe fn define_main(
         run_args.push(vars[param.name()]);
     }
     let run_args = run_args.as_mut_slice();
-    call(builder, run_function, run_args, llvm_name(""));
+    function_call(builder, run_function, run_args, llvm_name(""));
 
     let mut params_map = HashMap::new();
     for param in &params {
@@ -220,7 +220,7 @@ pub unsafe fn define_main(
         .map(|output_name| params_map[output_name])
         .collect();
     let output_args = output_args.as_mut_slice();
-    call(builder, output_function, output_args, llvm_name(""));
+    function_call(builder, output_function, output_args, llvm_name(""));
 
     function_return(builder, LLVMConstInt(i64_type, 0, 0));
     function

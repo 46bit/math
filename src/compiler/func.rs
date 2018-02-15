@@ -43,3 +43,18 @@ pub unsafe fn function_entry(
 pub unsafe fn function_return(builder: LLVMBuilderRef, value: LLVMValueRef) {
     assert_not_nil(LLVMBuildRet(builder, value));
 }
+
+pub unsafe fn function_call(
+    builder: LLVMBuilderRef,
+    function: LLVMValueRef,
+    args: &mut [LLVMValueRef],
+    name: CString,
+) -> LLVMValueRef {
+    assert_not_nil(LLVMBuildCall(
+        builder,
+        function,
+        args.as_mut_ptr(),
+        args.len() as u32,
+        name.as_ptr(),
+    ))
+}

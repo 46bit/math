@@ -1,4 +1,3 @@
-mod function;
 mod expression;
 mod param;
 mod func;
@@ -9,7 +8,6 @@ mod math;
 
 use super::*;
 use self::param::*;
-use self::function::*;
 use self::expression::*;
 use self::func::*;
 use self::operations::*;
@@ -29,6 +27,7 @@ use std::slice;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use std::iter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Emit {
@@ -68,6 +67,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     let name = llvm_name("module");
     let module = assert_not_nil(LLVMModuleCreateWithName(name.as_ptr()));
     let builder = assert_not_nil(LLVMCreateBuilderInContext(ctx));
+    let i64_type = LLVMInt64TypeInContext(ctx);
 
     define_sscanf(ctx, module);
     define_printf(ctx, module);
@@ -84,9 +84,24 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     let mut assign_set = HashSet::new();
     for statement in &program.statements.0 {
         match statement {
-            &Statement::FnDefinition(ref name, ref params, ref expr) => {
-                let function =
-                    synthesise_function(ctx, module, builder, name, params, expr, &functions);
+            &Statement::FnDefinition(ref name, ref param_names, ref expr) => {
+                let params = param_names
+                    .iter()
+                    .cloned()
+                    .zip(iter::repeat(i64_type))
+                    .collect();
+                let (function, args) =
+                    function_definition(module, into_llvm_name(name.clone()), params, i64_type);
+                let block_name = llvm_name("entry");
+                let block = assert_not_nil(LLVMAppendBasicBlockInContext(
+                    ctx,
+                    function,
+                    block_name.as_ptr(),
+                ));
+                LLVMPositionBuilderAtEnd(builder, block);
+                let value =
+                    synthesise_expression(ctx, module, builder, function, expr, &args, &functions);
+                LLVMBuildRet(builder, value);
                 functions.insert(name.clone(), function);
             }
             &Statement::VarAssignment(ref name, ref expression) => {

@@ -39,7 +39,7 @@ pub unsafe fn define_saturating_add(
         assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
 
     LLVMPositionBuilderAtEnd(builder, entry_block);
-    let result = call(
+    let result = function_call(
         builder,
         sadd_overflow,
         &mut [lhs, rhs],
@@ -138,7 +138,7 @@ pub unsafe fn define_saturating_sub(
         assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
 
     LLVMPositionBuilderAtEnd(builder, entry_block);
-    let result = call(
+    let result = function_call(
         builder,
         sadd_overflow,
         &mut [lhs, rhs],
@@ -237,7 +237,7 @@ pub unsafe fn define_saturating_mul(
         assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
 
     LLVMPositionBuilderAtEnd(builder, entry_block);
-    let result = call(
+    let result = function_call(
         builder,
         sadd_overflow,
         &mut [lhs, rhs],
@@ -437,7 +437,7 @@ pub unsafe fn saturating_add(
     let saturating_add_fn =
         assert_not_nil(LLVMGetNamedFunction(module, saturating_add_name.as_ptr()));
     let args = &mut [lhs, rhs];
-    call(builder, saturating_add_fn, args, name)
+    function_call(builder, saturating_add_fn, args, name)
 }
 
 pub unsafe fn saturating_sub(
@@ -451,7 +451,7 @@ pub unsafe fn saturating_sub(
     let saturating_sub_fn =
         assert_not_nil(LLVMGetNamedFunction(module, saturating_sub_name.as_ptr()));
     let args = &mut [lhs, rhs];
-    call(builder, saturating_sub_fn, args, name)
+    function_call(builder, saturating_sub_fn, args, name)
 }
 
 pub unsafe fn saturating_mul(
@@ -465,7 +465,7 @@ pub unsafe fn saturating_mul(
     let saturating_mul_fn =
         assert_not_nil(LLVMGetNamedFunction(module, saturating_mul_name.as_ptr()));
     let args = &mut [lhs, rhs];
-    call(builder, saturating_mul_fn, args, name)
+    function_call(builder, saturating_mul_fn, args, name)
 }
 
 pub unsafe fn saturating_div(
@@ -479,5 +479,5 @@ pub unsafe fn saturating_div(
     let saturating_div_fn =
         assert_not_nil(LLVMGetNamedFunction(module, saturating_div_name.as_ptr()));
     let args = &mut [numerator, denominator];
-    call(builder, saturating_div_fn, args, name)
+    function_call(builder, saturating_div_fn, args, name)
 }

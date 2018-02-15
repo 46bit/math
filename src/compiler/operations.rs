@@ -52,18 +52,3 @@ pub unsafe fn allocate(builder: LLVMBuilderRef, t: LLVMTypeRef, name: CString) -
 pub unsafe fn load(builder: LLVMBuilderRef, from: LLVMValueRef, name: CString) -> LLVMValueRef {
     assert_not_nil(LLVMBuildLoad(builder, from, name.as_ptr()))
 }
-
-pub unsafe fn call(
-    builder: LLVMBuilderRef,
-    function: LLVMValueRef,
-    args: &mut [LLVMValueRef],
-    name: CString,
-) -> LLVMValueRef {
-    assert_not_nil(LLVMBuildCall(
-        builder,
-        function,
-        args.as_mut_ptr(),
-        args.len() as u32,
-        name.as_ptr(),
-    ))
-}

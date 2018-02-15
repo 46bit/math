@@ -26,7 +26,7 @@ pub unsafe fn sscanf(
     let sscanf_name = llvm_name("sscanf");
     let sscanf_fn = assert_not_nil(LLVMGetNamedFunction(module, sscanf_name.as_ptr()));
     let args = &mut [string, template, destination];
-    call(builder, sscanf_fn, args, name)
+    function_call(builder, sscanf_fn, args, name)
 }
 
 pub unsafe fn define_printf(ctx: LLVMContextRef, module: LLVMModuleRef) -> LLVMValueRef {
@@ -50,5 +50,5 @@ pub unsafe fn printf(
     let printf_name = llvm_name("printf");
     let printf_fn = assert_not_nil(LLVMGetNamedFunction(module, printf_name.as_ptr()));
     let args = &mut [template, output];
-    call(builder, printf_fn, args, name)
+    function_call(builder, printf_fn, args, name)
 }

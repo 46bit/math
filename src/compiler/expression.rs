@@ -78,12 +78,12 @@ impl<'a> ExpressionSynthesiser<'a> {
                     unimplemented!();
                 }
             }
-            &Operand::FnApplication(ref name, ref args) => synthesise_fn_application(
-                self.builder,
-                name,
-                args.iter().map(|e| self.synthesise(e)).collect(),
-                self.fns,
-            ),
+            &Operand::FnApplication(ref name, ref arg_exprs) => {
+                let function = *self.fns.get(&name).unwrap();
+                let mut args: Vec<_> = arg_exprs.iter().map(|e| self.synthesise(e)).collect();
+                let call_name = llvm_name(&format!("{}_call", name));
+                function_call(self.builder, function, args.as_mut_slice(), call_name)
+            }
             &Operand::Match(ref match_) => synthesise_match(
                 self.ctx,
                 self.module,
