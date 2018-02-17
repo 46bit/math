@@ -53,10 +53,10 @@ impl<'a> ExpressionSynthesiser<'a> {
         let lhs = self.synthesise(lhs);
         let rhs = self.synthesise(rhs);
         match operator {
-            Operator::Subtract => saturating_sub(module, builder, lhs, rhs, llvm_name("tmp_sub")),
-            Operator::Add => saturating_add(module, builder, lhs, rhs, llvm_name("tmp_add")),
-            Operator::Divide => saturating_div(module, builder, lhs, rhs, llvm_name("tmp_div")),
-            Operator::Multiply => saturating_mul(module, builder, lhs, rhs, llvm_name("tmp_mul")),
+            Operator::Subtract => saturating_sub(module, builder, lhs, rhs, llvm_name("")),
+            Operator::Add => saturating_add(module, builder, lhs, rhs, llvm_name("")),
+            Operator::Divide => saturating_div(module, builder, lhs, rhs, llvm_name("")),
+            Operator::Multiply => saturating_mul(module, builder, lhs, rhs, llvm_name("")),
         }
     }
 
@@ -81,8 +81,7 @@ impl<'a> ExpressionSynthesiser<'a> {
             &Operand::FnApplication(ref name, ref arg_exprs) => {
                 let function = *self.fns.get(&name).unwrap();
                 let mut args: Vec<_> = arg_exprs.iter().map(|e| self.synthesise(e)).collect();
-                let call_name = llvm_name(&format!("{}_call", name));
-                function_call(self.builder, function, args.as_mut_slice(), call_name)
+                function_call(self.builder, function, args.as_mut_slice(), llvm_name(""))
             }
             &Operand::Match(ref match_) => synthesise_match(
                 self.ctx,
@@ -171,6 +170,6 @@ pub unsafe fn synthesise_match(
     assert_not_nil(LLVMBuildBr(builder, final_block));
 
     LLVMPositionBuilderAtEnd(builder, final_block);
-    let name = llvm_name("tmp_match");
+    let name = llvm_name("match");
     assert_not_nil(LLVMBuildLoad(builder, dest, name.as_ptr()))
 }

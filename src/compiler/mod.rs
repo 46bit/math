@@ -1,5 +1,4 @@
 mod expression;
-mod param;
 mod func;
 mod operations;
 mod program;
@@ -7,7 +6,6 @@ mod io;
 mod math;
 
 use super::*;
-use self::param::*;
 use self::expression::*;
 use self::func::*;
 use self::operations::*;
@@ -76,8 +74,8 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
     define_saturating_mul(ctx, module, builder);
     define_saturating_div(ctx, module, builder);
 
-    let input_function = define_input(ctx, module, builder, program.inputs.clone());
-    let output_function = define_output(ctx, module, builder, program.outputs.clone());
+    //let input_function = define_input(ctx, module, builder, program.inputs.clone());
+    //let output_function = define_output(ctx, module, builder, program.outputs.clone());
 
     let mut functions = HashMap::new();
     let mut assigns = vec![];
@@ -111,18 +109,13 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
         }
     }
 
-    let run_params = classify_parameters(&program.inputs, &program.outputs, assign_set)?;
-    let run_function = define_run(ctx, module, builder, run_params.clone(), assigns);
     define_main(
         ctx,
         module,
         builder,
-        run_params,
-        input_function,
-        run_function,
-        output_function,
-        program.inputs.len() as u64,
+        program.inputs.clone(),
         program.outputs.clone(),
+        assigns,
     );
 
     LLVMDisposeBuilder(builder);
@@ -137,6 +130,8 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
         f.write_all(ir.as_bytes()).unwrap();
         drop(f);
     }
+    // FIXME: Remove once refactor works
+    eprintln!("{}", ir);
     Ok(ir)
 }
 

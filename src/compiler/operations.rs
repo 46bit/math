@@ -38,11 +38,11 @@ pub unsafe fn getelement(
     builder: LLVMBuilderRef,
     array: LLVMValueRef,
     index: u64,
-    name: CString,
+    gep_name: CString,
+    load_name: CString,
 ) -> LLVMValueRef {
-    let ptr_name = llvm_name(&format!("{}_ptr", name.clone().into_string().unwrap()));
-    let ptr = getelementptr(ctx, builder, array, index, ptr_name);
-    load(builder, ptr, name)
+    let ptr = getelementptr(ctx, builder, array, index, gep_name);
+    load(builder, ptr, load_name)
 }
 
 pub unsafe fn allocate(builder: LLVMBuilderRef, t: LLVMTypeRef, name: CString) -> LLVMValueRef {
