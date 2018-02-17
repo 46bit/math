@@ -90,6 +90,7 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
                     .collect();
                 let (function, args) =
                     function_definition(module, into_llvm_name(name.clone()), params, i64_type);
+                functions.insert(name.clone(), function);
                 let block_name = llvm_name("entry");
                 let block = assert_not_nil(LLVMAppendBasicBlockInContext(
                     ctx,
@@ -100,7 +101,6 @@ unsafe fn synthesise(program: &Program, ir_path: Option<&Path>) -> Result<String
                 let value =
                     synthesise_expression(ctx, module, builder, function, expr, &args, &functions);
                 LLVMBuildRet(builder, value);
-                functions.insert(name.clone(), function);
             }
             &Statement::VarAssignment(ref name, ref expression) => {
                 assigns.push((name.clone(), expression.clone(), functions.clone()));

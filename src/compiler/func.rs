@@ -30,16 +30,6 @@ pub unsafe fn function_definition(
     (function, param_values)
 }
 
-pub unsafe fn function_entry(
-    ctx: LLVMContextRef,
-    builder: LLVMBuilderRef,
-    name: CString,
-    function: LLVMValueRef,
-) {
-    let block = assert_not_nil(LLVMAppendBasicBlockInContext(ctx, function, name.as_ptr()));
-    LLVMPositionBuilderAtEnd(builder, block);
-}
-
 pub unsafe fn function_return(builder: LLVMBuilderRef, value: LLVMValueRef) {
     assert_not_nil(LLVMBuildRet(builder, value));
 }

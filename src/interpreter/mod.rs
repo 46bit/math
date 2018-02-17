@@ -23,12 +23,13 @@ pub fn execute(program: &Program, inputs: &Vec<i64>) -> Result<Vec<i64>, Error> 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Function(Vec<Name>, Expression, HashMap<Name, Function>);
+pub struct Function(Vec<Name>, Expression);
 
 #[derive(Debug, Clone)]
 pub struct Interpreter {
     pub variables: HashMap<Name, i64>,
     pub functions: HashMap<Name, Function>,
+    pub function_frames: HashMap<Name, HashMap<Name, Function>>,
 }
 
 impl Interpreter {
@@ -36,6 +37,7 @@ impl Interpreter {
         Interpreter {
             variables: HashMap::new(),
             functions: HashMap::new(),
+            function_frames: HashMap::new(),
         }
     }
 
@@ -71,8 +73,10 @@ impl Interpreter {
                 self.variables.insert(name.clone(), expr_value);
             }
             &Statement::FnDefinition(ref name, ref params, ref expr) => {
-                let function = Function(params.clone(), expr.clone(), self.functions.clone());
+                let function = Function(params.clone(), expr.clone());
                 self.functions.insert(name.clone(), function);
+                self.function_frames
+                    .insert(name.clone(), self.functions.clone());
             }
         }
         Ok(())
@@ -151,10 +155,11 @@ impl Interpreter {
         caller_variables: &HashMap<Name, i64>,
         caller_functions: &HashMap<Name, Function>,
     ) -> Result<i64, Error> {
-        let Function(ref params, ref expr, ref functions) = caller_functions
+        let Function(ref params, ref expr) = caller_functions
             .get(&name)
             .ok_or_else(|| Error::UnknownFunction(name.clone()))?
             .clone();
+        let functions = self.function_frames[name].clone();
 
         if params.len() != arg_exprs.len() {
             return Err(Error::IncorrectArgumentCount {
@@ -169,7 +174,7 @@ impl Interpreter {
             args.push(self.expression(arg_expr, caller_variables, caller_functions)?);
         }
         let variables = params.iter().cloned().zip(args.into_iter()).collect();
-        let result = self.expression(expr, &variables, functions);
+        let result = self.expression(expr, &variables, &functions);
         return result;
     }
 
@@ -286,16 +291,11 @@ mod tests {
             Function(
                 vec![as_name("a")],
                 Expression::Operand(Operand::VarSubstitution(as_name("a"))),
-                HashMap::new(),
             ),
         );
         assert_eq!(
             i.functions[&as_name("f")],
-            Function(
-                vec![as_name("a")],
-                expression(b"3 * a;").unwrap().1,
-                functions
-            )
+            Function(vec![as_name("a")], expression(b"3 * a;").unwrap().1,)
         );
     }
 
@@ -311,7 +311,6 @@ mod tests {
             Function(
                 vec![as_name("a")],
                 Expression::Operand(Operand::VarSubstitution(as_name("a"))),
-                HashMap::new(),
             ),
         );
         assert_eq!(
@@ -319,7 +318,6 @@ mod tests {
             Function(
                 vec![as_name("a"), as_name("b")],
                 expression(b"a + b;").unwrap().1,
-                functions
             )
         );
     }
@@ -397,15 +395,37 @@ mod tests {
         assert_eq!(i.variables[&as_name("n")], 3);
     }
 
+    // FIXME: Verify properties of function definitions when their statement
+    // is evaluated, not when the function is called.
+    // #[test]
+    // fn fn_cannot_call_previous_definition_of_same_name() {
+    //     let mut i = Interpreter::new();
+    //     i.statement(&statement(b"f(a) = a * 5;").unwrap().1)
+    //         .unwrap();
+    //     assert_eq!(
+    //         i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1),
+    //         Err(Error::IncorrectArgumentCount {
+    //             name: as_name("f"),
+    //             params_count: 2,
+    //             provided_count: 1,
+    //         })
+    //     );
+    // }
+
     #[test]
-    fn fn_can_call_previous_definition_of_same_name() {
+    fn fn_can_be_called_recursively() {
         let mut i = Interpreter::new();
-        i.statement(&statement(b"f(a) = a * 5;").unwrap().1)
+        i.statement(
+            &statement(b"f(a) = match a { 1 => 1, _ => f(a - 1) * 2 };")
+                .unwrap()
+                .1,
+        ).unwrap();
+        i.statement(&statement(b"g(x) = f(x) + 3;").unwrap().1)
             .unwrap();
-        i.statement(&statement(b"f(a, b) = f(a) + b;").unwrap().1)
-            .unwrap();
-        i.statement(&statement(b"i = f(2, 1);").unwrap().1).unwrap();
-        assert_eq!(i.variables[&as_name("i")], 11);
+        i.statement(&statement(b"i = f(3);").unwrap().1).unwrap();
+        assert_eq!(i.variables[&as_name("i")], 4);
+        i.statement(&statement(b"j = g(3);").unwrap().1).unwrap();
+        assert_eq!(i.variables[&as_name("j")], 7);
     }
 
     #[test]

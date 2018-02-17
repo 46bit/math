@@ -283,10 +283,11 @@ fn arbitrary_statement<G: Gen>(
             // using the previously defined function
             fns.remove(&fn_name);
             let expr = arbitrary_expression(g, level + 1, &params.clone(), fns);
+            // FIXME: Identify a nice way to generate recursive function calls without
+            // runtime stack overflows.
+            fns.insert(fn_name.clone(), params_count);
             // FIXME: Remove or reduce parameters not used in the expression?
-            let statement =
-                Statement::FnDefinition(fn_name.clone(), params.into_iter().collect(), expr);
-            fns.insert(fn_name, params_count);
+            let statement = Statement::FnDefinition(fn_name, params.into_iter().collect(), expr);
             statement
         }
         _ => unreachable!(),
