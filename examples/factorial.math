@@ -1,0 +1,7 @@
+inputs a;
+factorial(n) = match n {
+  0 => 1,
+  _ => n * factorial(n - 1),
+};
+b = factorial(a);
+outputs b;
